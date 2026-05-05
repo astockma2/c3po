@@ -117,6 +117,17 @@ speech = ["faster-whisper>=1.0"]
 speech-deepgram = ["deepgram-sdk>=3.0"]
 eval-wandb = ["wandb>=0.17"]
 eval-sheets = ["gspread>=6.0", "google-auth>=2.0"]
+mining-pearl-cpu = [
+    # Pearl's pure-Rust miner exposed to Python. Today: install from a local
+    # path or git URL via the build-from-pin path in src/openjarvis/mining/_install.py.
+    # When Pearl publishes to PyPI, this becomes a normal version pin.
+    "py-pearl-mining ; sys_platform == 'darwin' or sys_platform == 'linux'",
+    # PyTorch reference of NoisyGEMM — used for parity validation only,
+    # not required at runtime, but the install verifies torch builds OK.
+    "miner-base ; sys_platform == 'darwin' or sys_platform == 'linux'",
+    # JSON-RPC server that talks to pearld and brokers shares for the miner.
+    "pearl-gateway ; sys_platform == 'darwin' or sys_platform == 'linux'",
+]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
