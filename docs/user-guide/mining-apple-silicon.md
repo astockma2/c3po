@@ -19,8 +19,11 @@ If you want to mine for yield, this isn't the path. If you want to participate
 in the network from the hardware you own, with no special hardware purchase,
 this is the path.
 
-A future v2 will add Apple-GPU acceleration via PyTorch MPS or a custom MLX
-plugin. v3 may add a native Metal kernel. **Neither is shipped today.**
+An experimental `apple-mps-pearl` provider is available for developers. It
+uses PyTorch MPS for the NoisyGEMM matmuls, while transcript hashing and proof
+construction still run on CPU. This proves the Apple-GPU path can produce
+validator-accepted `PlainProof`s, but it is not yet the high-performance Metal
+kernel path.
 
 ## Prerequisites
 
@@ -99,8 +102,9 @@ Session
   WSL2 if you must.
 - **No coupling to inference yet.** v1 is a separate process; your CPU does
   mining, your GPU does inference. They don't share work. v2 changes this.
-- **No PyTorch-MPS yet.** v1 stays on the CPU path. v2 will move the math
-  to MPS for Apple-GPU acceleration.
+- **Experimental PyTorch-MPS only.** `apple-mps-pearl` moves the NoisyGEMM
+  matmuls to MPS but still has CPU readbacks for transcript hashing and proof
+  construction. Use it for validation and profiling, not revenue expectations.
 - **No multi-host pool.** Solo mining only. The pool work is a separate spec.
 
 ## Troubleshooting
@@ -118,8 +122,7 @@ an issue at https://github.com/open-jarvis/OpenJarvis/issues.
 
 ## What changes in v2 / v3
 
-- **v2 (months):** PyTorch-MPS acceleration plus optional plugin into MLX-LM
-  or `llama-cpp-python`. Same `cpu-pearl` config; users opt in via a new
-  `apple-mps-pearl` provider when v2 ships.
+- **v2:** Optimize the current `apple-mps-pearl` path, then optionally plug it
+  into MLX-LM or `llama-cpp-python` so inference matmuls become mining work.
 - **v3 (only if v2 perf is insufficient):** Native Metal kernel as a Pearl
   upstream contribution. No user-visible change other than higher hashrate.

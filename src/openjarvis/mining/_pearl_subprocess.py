@@ -1,11 +1,11 @@
-"""Subprocess launcher for the cpu-pearl provider.
+"""Subprocess launcher for Pearl providers.
 
 Manages two coordinated subprocesses:
 
 - ``pearl-gateway`` — Pearl's Python JSON-RPC service that talks to ``pearld``
   and brokers shares between the miner and the network.
-- ``openjarvis.mining._miner_loop_main`` — this repo's miner loop that polls
-  the gateway and runs ``pearl_mining.mine()``.
+- a provider-selected miner-loop module that polls the gateway, mines, and
+  submits proofs.
 
 Lifecycle is in-memory: while this object lives, both subprocesses live. The
 provider holds it; the sidecar JSON records PIDs for crash recovery and
@@ -50,6 +50,8 @@ class PearlSubprocessLauncher:
         pearld_rpc_password: str,
         wallet_address: str,
         log_dir: Path,
+        provider_id: str = "cpu-pearl",
+        miner_module: str = "openjarvis.mining._miner_loop_main",
     ) -> None:
         self.gateway_host = gateway_host
         self.gateway_port = gateway_port
@@ -59,6 +61,8 @@ class PearlSubprocessLauncher:
         self.pearld_rpc_password = pearld_rpc_password
         self.wallet_address = wallet_address
         self.log_dir = Path(log_dir)
+        self.provider_id = provider_id
+        self.miner_module = miner_module
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self._handles: _ProcessHandles | None = None
 
@@ -74,7 +78,8 @@ class PearlSubprocessLauncher:
         # Spawn pearl-gateway first. ``pearl-gateway`` is the console-script
         # entry point exposed by the pearl_gateway package's pyproject.toml.
         logger.info(
-            "[cpu-pearl] starting pearl-gateway on %s:%d (metrics %d)",
+            "[%s] starting pearl-gateway on %s:%d (metrics %d)",
+            self.provider_id,
             self.gateway_host,
             self.gateway_port,
             self.metrics_port,
@@ -93,19 +98,21 @@ class PearlSubprocessLauncher:
 
         # Spawn miner-loop pointed at the gateway.
         logger.info(
-            "[cpu-pearl] starting miner-loop (m=%d n=%d k=%d rank=%d)",
+            "[%s] starting miner-loop %s (m=%d n=%d k=%d rank=%d)",
+            self.provider_id,
+            self.miner_module,
             m,
             n,
             k,
             rank,
         )
-        miner_log_path = self.log_dir / "cpu-pearl-miner.log"
+        miner_log_path = self.log_dir / f"{self.provider_id}-miner.log"
         with miner_log_path.open("a", buffering=1) as miner_log:
             miner_loop = subprocess.Popen(
                 [
                     sys.executable,
                     "-m",
-                    "openjarvis.mining._miner_loop_main",
+                    self.miner_module,
                     "--gateway-host",
                     self.gateway_host,
                     "--gateway-port",
@@ -144,7 +151,8 @@ class PearlSubprocessLauncher:
                     time.sleep(0.05)
                 if proc.poll() is None:
                     logger.warning(
-                        "[cpu-pearl] subprocess %d did not exit after %.1fs; SIGKILL",
+                        "[%s] subprocess %d did not exit after %.1fs; SIGKILL",
+                        self.provider_id,
                         proc.pid,
                         grace,
                     )
