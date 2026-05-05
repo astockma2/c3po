@@ -49,6 +49,9 @@ class MpsNoisyGemmAdapter:
 
     @staticmethod
     def build(noisy_gemm_cls: type, **kwargs: Any) -> Any:
+        import torch
+        from miner_base.noisy_gemm import Transcript
+
         class _MpsNoisyGemm(noisy_gemm_cls):  # type: ignore[misc, valid-type]
             def _accumulate_transcripts(self, transcripts, reduction_count, C_block):  # type: ignore[no-untyped-def]
                 return super()._accumulate_transcripts(
@@ -70,16 +73,18 @@ class MpsNoisyGemmAdapter:
                 ]
                 reduction_count = 0
                 has_full_tiles = False
-                C_block = A.new_zeros((block_h, block_w), dtype=A.dtype).to(
-                    dtype=__import__("torch").int32
+                C_block = torch.zeros(
+                    (block_h, block_w),
+                    dtype=torch.int32,
+                    device=A.device,
                 )
                 for p in range(0, k, self.noise_rank):
                     p_max = min(p + self.noise_rank, k)
                     A_tile = A[i:i_max, p:p_max]
                     B_tile = B[p:p_max, j:j_max]
-                    C_tile = __import__("torch").matmul(
-                        A_tile.to(__import__("torch").int32),
-                        B_tile.to(__import__("torch").int32),
+                    C_tile = torch.matmul(
+                        A_tile.to(torch.int32),
+                        B_tile.to(torch.int32),
                     )
                     C_block += C_tile
                     is_full_tile = (
@@ -101,7 +106,6 @@ class MpsNoisyGemmAdapter:
                 assert A.shape[1] == B.shape[0]
                 m, k = A.shape
                 n = B.shape[1]
-                torch = __import__("torch")
                 C = torch.zeros((m, n), dtype=torch.int32, device=A.device)
                 hash_tile_h = self.inner_hash.tile_h
                 hash_tile_w = self.inner_hash.tile_w
@@ -129,8 +133,6 @@ class MpsNoisyGemmAdapter:
                             )
                         C[i:i_max, j:j_max] = C_block
                 return C, found_block
-
-        from miner_base.noisy_gemm import Transcript
 
         _MpsNoisyGemm.Transcript = Transcript
         return _MpsNoisyGemm(**kwargs)

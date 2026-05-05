@@ -86,6 +86,30 @@ def test_detect_supported_when_torch_mps_available(apple_hw):
     assert cap.supported is True
 
 
+@pytest.mark.parametrize("chip", ["M2 Max", "M3 Max", "M4 Max", "M5 Max"])
+def test_detect_supports_apple_silicon_gpu_generations(chip):
+    from openjarvis.core.config import GpuInfo, HardwareInfo
+    from openjarvis.mining.apple_mps_pearl import AppleMpsPearlProvider
+
+    hw = HardwareInfo(
+        platform="darwin",
+        cpu_brand=f"Apple {chip}",
+        cpu_count=16,
+        ram_gb=128.0,
+        gpu=GpuInfo(vendor="apple", name=chip, vram_gb=128.0, count=1),
+    )
+    with (
+        patch(_AVAIL, return_value=True),
+        patch(
+            "openjarvis.mining.apple_mps_pearl._torch_mps_available",
+            return_value=(True, None),
+        ),
+    ):
+        cap = AppleMpsPearlProvider.detect(hw, engine_id="mlx", model="any")
+
+    assert cap.supported is True
+
+
 def test_start_uses_mps_miner_module(mps_config, tmp_path, monkeypatch):
     from openjarvis.mining.apple_mps_pearl import AppleMpsPearlProvider
 
@@ -140,7 +164,9 @@ def test_mps_noisy_gemm_plain_proof_verifies_when_mps_available():
         nbits=0x207FFFFF,
     )
     header_bytes = header.to_bytes()
-    m = n = 64
+    # Match the provider defaults so this catches regressions in the shipped
+    # Apple-MPS launch shape.
+    m = n = 128
     k = 1024
     rank = 64
     mining_config = _mining_config_for_shape(pearl_mining, k=k, rank=rank)
