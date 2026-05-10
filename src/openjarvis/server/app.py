@@ -15,10 +15,66 @@ from openjarvis.server.comparison import comparison_router
 from openjarvis.server.connectors_router import create_connectors_router
 from openjarvis.server.dashboard import dashboard_router
 from openjarvis.server.digest_routes import create_digest_router
+from openjarvis.server.permission_routes import create_permission_router
 from openjarvis.server.routes import router
 from openjarvis.server.upload_router import router as upload_router
 
 logger = logging.getLogger(__name__)
+
+
+def _wire_permission_gate(app: FastAPI) -> None:
+    """Stage 2 - liest OPENJARVIS_PERMISSIONS_CONFIG (TOML-Pfad) aus der
+    Umgebung und baut PermissionGate + AuditLogger + permission_routes.
+
+    Wenn die ENV-Variable nicht gesetzt ist, bleibt app.state.permission_gate
+    auf None - Permission-Check ist dann Sache der Aufrufer.
+    """
+    import os
+
+    config_path_str = os.environ.get("OPENJARVIS_PERMISSIONS_CONFIG", "")
+    if not config_path_str:
+        return
+    config_path = pathlib.Path(config_path_str)
+    if not config_path.exists():
+        logger.warning(
+            "OPENJARVIS_PERMISSIONS_CONFIG=%s aber Datei fehlt - "
+            "PermissionGate nicht aktiviert.",
+            config_path,
+        )
+        return
+
+    try:
+        from openjarvis.security.audit import AuditLogger
+        from openjarvis.security.permission_gate import PermissionGate
+        from openjarvis.server.permission_routes import create_permission_router
+
+        admin_whitelist_str = os.environ.get("OPENJARVIS_ADMIN_WHITELIST", "")
+        admin_whitelist = (
+            pathlib.Path(admin_whitelist_str) if admin_whitelist_str else None
+        )
+
+        # PIN-Check default: keiring (laeuft auf der Server-Maschine,
+        # nicht auf dem Tray). Falls keiring fehlt, faellt verify_pin()
+        # auf False zurueck - dann muss admin manuell konfiguriert werden.
+        try:
+            from desktop.keyring_helper import verify_pin
+        except ImportError:
+            verify_pin = lambda _pin: False
+
+        audit = AuditLogger(bus=app.state.bus)
+        gate = PermissionGate(
+            config_path=config_path,
+            admin_whitelist_path=admin_whitelist,
+            pin_check=verify_pin,
+            bus=app.state.bus,
+            audit=audit,
+        )
+        app.state.permission_gate = gate
+        app.state.audit_logger = audit
+        app.include_router(create_permission_router(gate=gate, audit=audit))
+        logger.info("PermissionGate geladen aus %s", config_path)
+    except Exception:
+        logger.exception("PermissionGate konnte nicht initialisiert werden")
 
 
 def _restore_sendblue_bindings(app: FastAPI) -> None:
@@ -245,6 +301,10 @@ def create_app(
     app.include_router(create_digest_router())
     app.include_router(upload_router)
     include_all_routes(app)
+
+    # Stage 2 - Permission Gate + Audit + Voice-Status
+    app.state.permission_gate = None
+    _wire_permission_gate(app)
 
     # Restore SendBlue channel bindings from database on startup
     _restore_sendblue_bindings(app)
