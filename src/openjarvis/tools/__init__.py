@@ -141,4 +141,10 @@ try:
 except ImportError:
     pass
 
+# C3PO-spezifische Tools (Stage 3) — eigenes Sub-Paket mit Auto-Import-Loop.
+try:
+    import openjarvis.tools.c3po  # noqa: F401
+except ImportError:
+    pass
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]
