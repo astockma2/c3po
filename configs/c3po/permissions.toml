@@ -52,3 +52,15 @@
 "signal.send" = "confirm"
 "slack.send" = "confirm"
 "messaging.last_received" = "free"
+
+# Stage 3 Sub-Stufe 3.7 — Admin (alle admin, PIN am Tray + admin_whitelist.toml)
+"admin.reboot" = "admin"
+"admin.shutdown" = "admin"
+"admin.cancel_shutdown" = "admin"
+"admin.update_check" = "admin"
+"admin.cleanup_temp" = "admin"
+"admin.flush_dns" = "admin"
+"admin.restart_service" = "admin"
+"admin.list_services" = "admin"
+"admin.kill_process_force" = "admin"
+"admin.git_pull_repo" = "admin"
