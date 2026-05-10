@@ -1,0 +1,15 @@
+# C3PO Permission-Levels pro Tool.
+#
+# Stage 2 liefert nur das Permission-System; die Tools selbst und ihre
+# Default-Levels kommen in Stage 3.
+#
+# Levels:
+#   "free"    - sofort erlaubt
+#   "confirm" - Tray-Dialog Ja/Nein
+#   "admin"   - Tray-Dialog mit PIN (zusaetzlich admin_whitelist.toml noetig)
+#   "denied"  - explizit verboten
+#
+# Tools, die hier NICHT stehen, werden default-deny abgelehnt.
+
+[tools]
+# Initial leer. Stage-3-Tools (Mail/Calendar/Browser/Admin) tragen sich hier ein.

@@ -1,0 +1,12 @@
+# Whitelist fuer Tools, die ueberhaupt mit level="admin" PIN-bestaetigt
+# werden duerfen. Auch wenn ein Tool in permissions.toml als "admin" steht,
+# wird es sofort abgelehnt, wenn es nicht hier auftaucht. Doppelte
+# Sicherheit gegen Konfig-Fehler.
+
+[admin]
+tools = [
+    # Beispiele - in Stage 3 werden die echten Admin-Tools hier eingetragen:
+    # "admin.reboot",
+    # "admin.shutdown",
+    # "admin.cleanup",
+]

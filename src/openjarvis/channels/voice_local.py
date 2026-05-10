@@ -159,6 +159,7 @@ class VoiceLocalChannel(BaseChannel):
         stt_device: str = "auto",
         stt_compute_type: str = "float16",
         stt_language: str = "",
+        permission_gate: Any = None,
     ) -> None:
         self._wakeword_model = wakeword_model
         self._wake_name = wake_name
@@ -169,6 +170,7 @@ class VoiceLocalChannel(BaseChannel):
         self._stt_device = stt_device
         self._stt_compute_type = stt_compute_type
         self._stt_language = stt_language
+        self._permission_gate = permission_gate
         self._status = ChannelStatus.DISCONNECTED
         self._message_handler: Optional[ChannelHandler] = None
         self._listen_task: Optional[asyncio.Task] = None
