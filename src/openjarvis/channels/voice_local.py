@@ -261,7 +261,13 @@ class VoiceLocalChannel(BaseChannel):
                 content=result.text,
                 metadata={"language": result.language},
             )
-            response = self._message_handler(msg)
+            # WICHTIG: handler im Worker-Thread callen, damit ein synchroner
+            # ToolExecutor-Aufruf mit permission_loop=running_loop nicht
+            # deadlockt. Siehe docs/architecture/tools_c3po.md.
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None, self._message_handler, msg
+            )
             if response:
                 self.send(channel="voice_local", content=response)
             return
