@@ -16,3 +16,11 @@
 "time.now" = "free"
 "time.date" = "free"
 "hello.greet" = "free"
+
+# Stage 3 Sub-Stufe 3.2 — Windows (3 confirm, 3 free)
+"windows.open_app" = "confirm"
+"windows.close_app" = "confirm"
+"windows.kill_process" = "confirm"
+"windows.list_processes" = "free"
+"windows.lock_screen" = "free"
+"windows.notify" = "free"
