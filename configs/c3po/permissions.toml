@@ -35,3 +35,13 @@
 "calendar.upcoming" = "free"
 "calendar.list" = "free"
 "calendar.search" = "free"
+
+# Stage 3 Sub-Stufe 3.5 — Browser (5 free, 3 confirm)
+"browser.open_url" = "free"
+"browser.new_tab" = "free"
+"browser.list_tabs" = "free"
+"browser.close_tab" = "confirm"
+"browser.click" = "confirm"
+"browser.fill" = "confirm"
+"browser.screenshot" = "free"
+"browser.read_page" = "free"
