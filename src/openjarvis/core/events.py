@@ -77,6 +77,10 @@ class EventType(str, Enum):
     OPTIMIZE_TRIAL_END = "optimize_trial_end"
     OPTIMIZE_RUN_END = "optimize_run_end"
     FEEDBACK_RECEIVED = "feedback_received"
+    # Stage 2 - Permission Gate
+    PERMISSION_CONFIRM_REQUESTED = "permission_confirm_requested"
+    PERMISSION_PIN_REQUESTED = "permission_pin_requested"
+    PERMISSION_RESOLVED = "permission_resolved"
 
 
 @dataclass(slots=True)
