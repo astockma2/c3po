@@ -59,6 +59,23 @@ def create_permission_router(
         granted = await gate.confirm(prompt_id, body.response)
         return {"granted": granted, "prompt_id": prompt_id}
 
+    @router.get("/permission/pending")
+    def get_pending() -> Dict[str, List[Dict[str, Any]]]:
+        """Liefert die aktuell offenen Permission-Prompts (Stage 5 Cockpit)."""
+        pending_list: List[Dict[str, Any]] = []
+        for prompt_id, (_fut, kind) in gate._pending.items():
+            meta = gate._pending_meta.get(prompt_id, {})
+            pending_list.append(
+                {
+                    "prompt_id": prompt_id,
+                    "kind": kind,
+                    "tool": meta.get("tool", ""),
+                    "channel": meta.get("channel", ""),
+                    "args": meta.get("args", {}),
+                }
+            )
+        return {"pending": pending_list}
+
     @router.get("/audit/log")
     def get_audit_log(limit: int = 100, event_type: str | None = None) -> Dict[str, List[Dict[str, Any]]]:
         events = audit.query(event_type=event_type, limit=limit)
