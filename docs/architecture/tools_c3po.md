@@ -100,6 +100,11 @@ blockiert den Loop, der gerade auf das Future warten müsste.
 
 Demo: `scripts/tools_smoke_test.py` zeigt beide Pfade.
 
+**Stand 2026-05-10:** Stage 4 Task 5 hat `VoiceLocalChannel._listen_once`
+auf `loop.run_in_executor(None, handler, msg)` umgestellt — die Falle ist
+fuer den Voice-Channel-Pfad geschlossen. Andere Channels (telegram, slack)
+muessen das genauso machen, sobald sie verdrahtet werden.
+
 ## Permission-Matrix (Stage 3 final)
 
 | Block | Tools | free | confirm | admin |

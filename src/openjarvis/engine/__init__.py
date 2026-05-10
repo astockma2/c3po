@@ -8,6 +8,11 @@ import importlib
 import openjarvis.engine.ollama  # noqa: F401
 import openjarvis.engine.codex_cli  # noqa: F401
 import openjarvis.engine.openai_compat_engines  # noqa: F401
+
+try:
+    import openjarvis.engine.claudi_proxy  # noqa: F401
+except ImportError:
+    pass
 from openjarvis.engine._base import (
     EngineConnectionError,
     InferenceEngine,
