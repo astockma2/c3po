@@ -10,14 +10,21 @@ Konfiguration: TOML mit [tools]-Section, Werte sind PermissionLevel-Strings.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import time
 import tomllib
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 from openjarvis.core.events import EventBus, EventType
-from openjarvis.security.types import PermissionLevel, PermissionResult
+from openjarvis.security.types import (
+    PermissionLevel,
+    PermissionResult,
+    SecurityEvent,
+    SecurityEventType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +50,7 @@ class PermissionGate:
         admin_whitelist_path: Optional[Path] = None,
         pin_check: Optional[PinCheck] = None,
         bus: Optional[EventBus] = None,
+        audit: Optional[Any] = None,  # AuditLogger - Forward-Ref vermeiden Zirkular-Import
         default_timeout: float = 30.0,
     ) -> None:
         self._tools: Dict[str, PermissionLevel] = self._load_toml(config_path)
@@ -54,9 +62,45 @@ class PermissionGate:
         # Default: alle PINs ablehnen, wenn kein Checker injiziert wurde.
         self._pin_check: PinCheck = pin_check or (lambda pin: False)
         self._bus = bus
+        self._audit = audit
         self._default_timeout = default_timeout
+        # Speichert pro prompt_id zusaetzlich tool/args/channel fuer's Audit-Logging
         self._pending: Dict[str, _PendingEntry] = {}
+        self._pending_meta: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
+
+    def _audit_log(
+        self,
+        event_type: SecurityEventType,
+        *,
+        tool: str,
+        channel: str,
+        action: str,
+        prompt_id: str = "",
+        args: Optional[dict] = None,
+        reason: str = "",
+    ) -> None:
+        """Schreibt einen Eintrag in die Audit-Hash-Chain. Stiller No-Op wenn
+        kein AuditLogger injiziert wurde."""
+        if self._audit is None:
+            return
+        payload = {
+            "tool": tool,
+            "channel": channel,
+            "args": args or {},
+            "prompt_id": prompt_id,
+        }
+        if reason:
+            payload["reason"] = reason
+        self._audit.log(
+            SecurityEvent(
+                event_type=event_type,
+                timestamp=time.time(),
+                findings=[],
+                content_preview=json.dumps(payload, ensure_ascii=False),
+                action_taken=action,
+            )
+        )
 
     def _load_admin_whitelist(self, path: Path) -> Set[str]:
         if not path.exists():
@@ -105,17 +149,30 @@ class PermissionGate:
         level = self._tools.get(tool_name)
 
         if level is None:
-            return PermissionResult.denied(
-                f"tool '{tool_name}' not configured in permissions.toml"
+            reason = f"tool '{tool_name}' not configured in permissions.toml"
+            self._audit_log(
+                SecurityEventType.PERMISSION_DENIED,
+                tool=tool_name, channel=channel, action="not_configured",
+                args=args, reason=reason,
             )
+            return PermissionResult.denied(reason)
 
         if level == PermissionLevel.FREE:
+            self._audit_log(
+                SecurityEventType.PERMISSION_GRANTED,
+                tool=tool_name, channel=channel, action="granted",
+                args=args,
+            )
             return PermissionResult.granted()
 
         if level == PermissionLevel.DENIED:
-            return PermissionResult.denied(
-                f"tool '{tool_name}' explicitly denied"
+            reason = f"tool '{tool_name}' explicitly denied"
+            self._audit_log(
+                SecurityEventType.PERMISSION_DENIED,
+                tool=tool_name, channel=channel, action="denied",
+                args=args, reason=reason,
             )
+            return PermissionResult.denied(reason)
 
         if level == PermissionLevel.CONFIRM:
             return await self._start_pending(
@@ -129,9 +186,13 @@ class PermissionGate:
 
         if level == PermissionLevel.ADMIN:
             if tool_name not in self._admin_whitelist:
-                return PermissionResult.denied(
-                    f"tool '{tool_name}' nicht in admin_whitelist.toml"
+                reason = f"tool '{tool_name}' nicht in admin_whitelist.toml"
+                self._audit_log(
+                    SecurityEventType.PERMISSION_DENIED,
+                    tool=tool_name, channel=channel, action="not_in_whitelist",
+                    args=args, reason=reason,
                 )
+                return PermissionResult.denied(reason)
             return await self._start_pending(
                 tool_name=tool_name,
                 args=args,
@@ -160,6 +221,14 @@ class PermissionGate:
         loop = asyncio.get_running_loop()
         async with self._lock:
             self._pending[prompt_id] = (loop.create_future(), kind)
+            self._pending_meta[prompt_id] = {
+                "tool": tool_name, "args": args, "channel": channel,
+            }
+        self._audit_log(
+            SecurityEventType.PERMISSION_REQUESTED,
+            tool=tool_name, channel=channel, action=f"awaiting_{kind}",
+            prompt_id=prompt_id, args=args,
+        )
         if self._bus is not None:
             self._bus.publish(
                 event_type,
@@ -182,11 +251,21 @@ class PermissionGate:
             return
         async with self._lock:
             entry = self._pending.pop(prompt_id, None)
+            meta = self._pending_meta.pop(prompt_id, {})
         if entry is None:
             return  # confirm() war schneller
         fut, _kind = entry
         if not fut.done():
             fut.set_result(False)
+            self._audit_log(
+                SecurityEventType.PERMISSION_DENIED,
+                tool=meta.get("tool", "?"),
+                channel=meta.get("channel", "?"),
+                args=meta.get("args", {}),
+                prompt_id=prompt_id,
+                action="timeout",
+                reason="timeout",
+            )
             if self._bus is not None:
                 self._bus.publish(
                     EventType.PERMISSION_RESOLVED,
@@ -201,6 +280,7 @@ class PermissionGate:
         """
         async with self._lock:
             entry = self._pending.pop(prompt_id, None)
+            meta = self._pending_meta.pop(prompt_id, {})
         if entry is None:
             return False
         fut, kind = entry
@@ -211,6 +291,14 @@ class PermissionGate:
         else:
             granted = response.strip().lower() in ("yes", "ja", "ok", "true", "1")
         fut.set_result(granted)
+        self._audit_log(
+            SecurityEventType.PERMISSION_GRANTED if granted else SecurityEventType.PERMISSION_DENIED,
+            tool=meta.get("tool", "?"),
+            channel=meta.get("channel", "?"),
+            args=meta.get("args", {}),
+            prompt_id=prompt_id,
+            action="granted" if granted else "user_declined",
+        )
         if self._bus is not None:
             self._bus.publish(
                 EventType.PERMISSION_RESOLVED,
