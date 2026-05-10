@@ -24,7 +24,8 @@
 
 ## C3PO Quickstart (Windows, Andre-Setup)
 
-Hard-Fork mit Andre's C3PO-Voice-Agent on-top (Stages 0–6). Details in
+Hard-Fork mit Andre's C3PO-Voice-Agent on-top (Stages 0–7). Details in
+[docs/architecture/ui_overview.md](docs/architecture/ui_overview.md) und
 [docs/architecture/cutover_stage6.md](docs/architecture/cutover_stage6.md).
 
 ```powershell
@@ -33,17 +34,25 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e ".[server,inference-cloud,c3po-voice]"
 .\.venv\Scripts\python.exe scripts\install_prompt_override.py
 
-# Manueller Start (Server + Voice-Brain + Cockpit in einem Aufruf)
+# Manueller Start (Server + Voice-Brain + Cockpit + Stanford-UI in einem Aufruf)
+# Pre-Flight: baut Frontend automatisch wenn noch nicht gebaut (~1-2 Min)
 .\scripts\start_c3po.ps1
 
-# Login-Autostart aktivieren
+# Nur Frontend bauen ohne zu starten:
+.\scripts\setup_frontend.ps1
+
+# Frontend-Build ueberspringen (Voice-only):
+$env:C3PO_SKIP_FRONTEND = "1"; .\scripts\start_c3po.ps1
+
+# Login-Autostart aktivieren / entfernen
 .\scripts\install_autostart.ps1
-# Entfernen: .\scripts\uninstall_autostart.ps1
+.\scripts\uninstall_autostart.ps1
 
 # C3PO-legacy ins Archiv verschieben (nach Cutover-Verifikation)
 .\scripts\archive_legacy.ps1
 ```
 
+- **Chat-UI:** http://localhost:8000/ — Stanford-Frontend mit claude-opus-4-7 (kein API-Key noetig, via VPS-OAuth)
 - **Cockpit:** http://localhost:8000/cockpit/ — Permission-Prompts, Audit-Log, Voice-Status
 - **Voice:** sag "Hey Jarvis" + dein Anliegen (z.B. "lies meine Mails")
 - **Stop:** Ctrl+C im start_c3po-Fenster

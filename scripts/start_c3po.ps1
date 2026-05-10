@@ -31,6 +31,18 @@ if (-not (Test-Path $Py)) {
     exit 1
 }
 
+# Stage 7: Frontend-Pre-Flight (mit $env:C3PO_SKIP_FRONTEND = "1" ueberspringbar)
+$SkipFrontend = $env:C3PO_SKIP_FRONTEND -eq "1"
+$StaticIndex = Join-Path $RepoRoot "src\openjarvis\server\static\index.html"
+
+if (-not $SkipFrontend -and -not (Test-Path $StaticIndex)) {
+    Write-Host "[0/2] Frontend nicht gebaut - starte automatischen Build ..." -ForegroundColor Yellow
+    & (Join-Path $RepoRoot "scripts\setup_frontend.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNUNG: Frontend-Build fehlgeschlagen. Server startet trotzdem - UI evtl. nicht verfuegbar." -ForegroundColor Yellow
+    }
+}
+
 # Server als Background-Prozess
 Write-Host "[1/2] Starte jarvis serve (Port 8000) ..." -ForegroundColor Cyan
 $ServerProc = Start-Process -FilePath $Py `

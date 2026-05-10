@@ -56,13 +56,18 @@ def _is_codex_cli_model(engine, model: str) -> bool:
     return getattr(routed, "engine_id", "") == "codex_cli"
 
 
-def _is_claudi_proxy_model(engine, model: str) -> bool:
-    """C3PO Stage 5: Claudi-Proxy-Modelle sind technisch 'cloud' (Anthropic),
-    aber laufen via Andre's VPS-OAuth ohne API-Key. Damit das Frontend sie
-    im normalen Modell-Dropdown anbietet (statt sie in den 'Cloud Models'-Tab
-    zu verbannen), bekommen sie hier denselben Bypass wie Codex-CLI."""
+def _is_c3po_custom_engine(engine, model: str) -> bool:
+    """C3PO Stage 7: pruefe ob die Engine fuer ``model`` eine C3PO-Custom-Engine
+    ist (z.B. ClaudiProxyEngine), die NICHT durch den Stanford-Cloud-Routing-
+    Pfad (stream_cloud / stream_local) muss. Generisch ueber das
+    ``is_c3po_custom``-Klassen-Attribut auf der ``InferenceEngine``-Basisklasse.
+
+    Loest den Stage-5-Hotfix _is_claudi_proxy_model ab: neue C3PO-Custom-Engines
+    setzen einfach is_c3po_custom = True und alle Routing-Sonderegeln greifen
+    automatisch — kein Code-Hinzufuegen pro Engine.
+    """
     routed = _engine_for_model(engine, model)
-    return getattr(routed, "engine_id", "") == "claudi_proxy"
+    return getattr(routed, "is_c3po_custom", False)
 
 
 def _to_messages(chat_messages) -> list[Message]:
@@ -355,11 +360,11 @@ async def _handle_stream(
     # Route directly to the right backend — bypasses engine routing entirely
     # so broken MultiEngine state can never misdirect requests.
     use_codex_cli = _is_codex_cli_model(engine, model)
-    use_claudi_proxy = _is_claudi_proxy_model(engine, model)
-    # C3PO Stage 5: Claudi-Proxy ist Andre's OAuth-Variante fuer Cloud-Modelle.
-    # Sie laeuft technisch ueber den engine-Pfad (stream_local), NICHT ueber
-    # stream_cloud (das wuerde einen ANTHROPIC_API_KEY erwarten).
-    use_cloud = is_cloud_model(model) and not use_codex_cli and not use_claudi_proxy
+    use_c3po_custom = _is_c3po_custom_engine(engine, model)
+    # C3PO Stage 7: c3po-custom Engines (z.B. Claudi-Proxy) sind technisch
+    # cloud-Modelle, laufen aber durch engine.stream() NICHT durch stream_cloud
+    # (das wuerde einen API-Key erwarten).
+    use_cloud = is_cloud_model(model) and not use_codex_cli and not use_c3po_custom
 
     async def generate():
         # Send role chunk first
@@ -392,10 +397,10 @@ async def _handle_stream(
                 # cloud backend — detected via isinstance so mocks are not
                 # accidentally matched.
                 _use_local_fallback = False
-                # C3PO Stage 5: claudi_proxy hat is_cloud=True aber soll NICHT
-                # auf stream_local() (= Ollama) zurueckfallen. Die Engine kann
-                # selbst streamen — wir lassen engine.stream() laufen.
-                if not use_codex_cli and not use_claudi_proxy:
+                # C3PO Stage 7: c3po-custom Engines haben is_cloud=True, sollen
+                # aber NICHT auf stream_local() (= Ollama) zurueckfallen. Die
+                # Engine kann selbst streamen — wir lassen engine.stream() laufen.
+                if not use_codex_cli and not use_c3po_custom:
                     try:
                         from openjarvis.engine.multi import MultiEngine
 
@@ -512,7 +517,7 @@ async def list_models(request: Request) -> ModelListResponse:
         for m in all_ids
         if not is_cloud_model(m)
         or _is_codex_cli_model(engine, m)
-        or _is_claudi_proxy_model(engine, m)
+        or _is_c3po_custom_engine(engine, m)
     ]
     if not model_ids:
         model_ids = await list_local_models()
