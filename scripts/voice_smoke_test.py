@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -86,6 +87,47 @@ def echo_handler(msg: ChannelMessage) -> str:
     return f"Du hast gesagt: {msg.content}"
 
 
+def _build_brain_handler(loop: asyncio.AbstractEventLoop):
+    """Stage-4-Handler: build_voice_brain mit Claudi-Proxy + PermissionGate.
+
+    Wird nur gebaut wenn ``$env:C3PO_VOICE_BRAIN = "1"``. Sonst nutzt der
+    Smoke-Test den simplen echo_handler (Stage-1-Verhalten).
+    """
+    from pathlib import Path
+
+    from openjarvis.agents.voice_brain import build_voice_brain
+    from openjarvis.security.permission_gate import PermissionGate
+
+    # Tools registrieren
+    import openjarvis.tools.c3po  # noqa: F401
+
+    config_dir = Path(__file__).resolve().parents[1] / "configs" / "c3po"
+    gate = PermissionGate(
+        config_path=config_dir / "permissions.toml",
+        admin_whitelist_path=config_dir / "admin_whitelist.toml",
+    )
+    brain = build_voice_brain(
+        model="claude-haiku-4-5",
+        permission_gate=gate,
+        permission_loop=loop,
+        max_turns=4,
+    )
+
+    def _wrapped(msg: ChannelMessage) -> str:
+        print_flush(
+            f"\n>> Verstanden: {msg.content!r} "
+            f"(lang={msg.metadata.get('language')})"
+        )
+        print_flush("   -> denke nach (Claudi-Proxy)...")
+        response = brain(msg)
+        if not response:
+            response = "Ich habe keine Antwort."
+        print_flush(f"<< {response[:200]}{'...' if len(response) > 200 else ''}")
+        return response
+
+    return _wrapped
+
+
 async def main() -> int:
     if not _check_files():
         return 1
@@ -109,7 +151,18 @@ async def main() -> int:
         # bei kurzem Sprechen gerne englischen Quatsch.
         stt_language="de",
     )
-    ch.on_message(echo_handler)
+
+    # Stage-4-Brain optional: nur wenn C3PO_VOICE_BRAIN=1 gesetzt ist.
+    # Sonst Stage-1-Echo, damit der alte Smoke-Test funktional bleibt.
+    use_brain = os.environ.get("C3PO_VOICE_BRAIN", "0").lower() in ("1", "true", "yes")
+    if use_brain:
+        loop = asyncio.get_running_loop()
+        handler = _build_brain_handler(loop)
+        print_flush("[Stage 4] Voice-Brain aktiv (Claudi-Proxy + PermissionGate).")
+    else:
+        handler = echo_handler
+        print_flush("[Stage 1] Echo-Handler aktiv. Fuer Voice-Brain: $env:C3PO_VOICE_BRAIN = '1'")
+    ch.on_message(handler)
     ch.connect()
     print_flush("\nlausche... sag 'Hey Jarvis' und dann etwas. Ctrl+C zum Beenden.")
 
