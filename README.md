@@ -22,6 +22,32 @@
 >
 > **[Roadmap](https://open-jarvis.github.io/OpenJarvis/development/roadmap/)**
 
+## C3PO Quickstart (Windows, Andre-Setup)
+
+Hard-Fork mit Andre's C3PO-Voice-Agent on-top (Stages 0–6). Details in
+[docs/architecture/cutover_stage6.md](docs/architecture/cutover_stage6.md).
+
+```powershell
+# Einmaliges Setup
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[server,inference-cloud,c3po-voice]"
+.\.venv\Scripts\python.exe scripts\install_prompt_override.py
+
+# Manueller Start (Server + Voice-Brain + Cockpit in einem Aufruf)
+.\scripts\start_c3po.ps1
+
+# Login-Autostart aktivieren
+.\scripts\install_autostart.ps1
+# Entfernen: .\scripts\uninstall_autostart.ps1
+
+# C3PO-legacy ins Archiv verschieben (nach Cutover-Verifikation)
+.\scripts\archive_legacy.ps1
+```
+
+- **Cockpit:** http://localhost:8000/cockpit/ — Permission-Prompts, Audit-Log, Voice-Status
+- **Voice:** sag "Hey Jarvis" + dein Anliegen (z.B. "lies meine Mails")
+- **Stop:** Ctrl+C im start_c3po-Fenster
+
 ## Why OpenJarvis?
 
 Personal AI agents are exploding in popularity, but nearly all of them still route intelligence through cloud APIs. Your "personal" AI continues to depend on someone else's server. At the same time, our [Intelligence Per Watt](https://www.intelligence-per-watt.ai/) research showed that local language models already handle 88.7% of single-turn chat and reasoning queries, with intelligence efficiency improving 5.3× from 2023 to 2025. The models and hardware are increasingly ready. What has been missing is the software stack to make local-first personal AI practical.
