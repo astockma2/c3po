@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 from typing import List, Optional
 
@@ -56,11 +57,17 @@ class FasterWhisperBackend(SpeechBackend):
         """Transcribe audio bytes using Faster-Whisper."""
         model = self._ensure_model()
 
-        # Write audio to a temp file (faster-whisper needs a file path)
+        # Write audio to a temp file (faster-whisper needs a file path).
+        # Windows: delete=False, weil sonst der offene Handle den Modell-Aufruf
+        # mit PermissionError blockiert; cleanup explizit im finally.
         suffix = f".{format}" if not format.startswith(".") else format
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=True) as tmp:
-            tmp.write(audio)
-            tmp.flush()
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        try:
+            try:
+                tmp.write(audio)
+                tmp.flush()
+            finally:
+                tmp.close()
 
             kwargs = {}
             if language:
@@ -68,6 +75,11 @@ class FasterWhisperBackend(SpeechBackend):
 
             segments_iter, info = model.transcribe(tmp.name, **kwargs)
             segments_list = list(segments_iter)
+        finally:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
 
         # Build result
         text = "".join(seg.text for seg in segments_list).strip()

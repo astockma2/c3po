@@ -1,0 +1,29 @@
+# C3PO Voice-Agent Settings.
+# Andre-spezifisch, nicht upstream OpenJarvis.
+
+[voice_local]
+enabled = true
+
+# Wake-Word
+wakeword_model = "piper-models/openwakeword/hey_jarvis_v0.1.onnx"
+wakeword_name = "hey_jarvis_v0.1"
+wakeword_threshold = 0.5
+
+# ASR (Speech-to-Text)
+asr_backend = "faster_whisper"
+asr_model = "medium"
+asr_language = "de"
+
+# TTS (Text-to-Speech)
+tts_backend = "piper"
+tts_voice = "de_DE-thorsten_emotional-medium"
+tts_model_dir = "piper-models"
+
+# VAD (Voice Activity Detection)
+vad_aggressiveness = 2  # 0-3, hoeher = aggressiver
+vad_silence_ms = 800     # Stille-Dauer bevor Recording stoppt
+
+# Audio I/O
+mic_device = ""          # leer = System-Default
+mic_sample_rate = 16000
+audio_chunk_ms = 30      # WebRTC-VAD braucht 10/20/30

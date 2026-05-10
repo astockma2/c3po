@@ -46,6 +46,14 @@ dev = [
     "ruff>=0.4",
     "pre-commit>=3.0",
 ]
+c3po-voice = [
+    "openwakeword>=0.6.0",
+    "faster-whisper>=1.0",
+    "piper-tts>=1.2",
+    "sounddevice>=0.4.7",
+    "webrtcvad-wheels>=2.0",
+    "numpy>=1.24",
+]
 inference-mlx = ["mlx-lm>=0.31.1; sys_platform == 'darwin'"]
 inference-vllm = ["vllm>=0.16.0"]
 inference-cloud = [
