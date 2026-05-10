@@ -85,20 +85,20 @@ gesetzt haben.
 Engine-Loop, Telegram-Channel) setzen es. Wenn leer und Permission-Gate gesetzt, wird
 `channel="unknown"` an `gate.check()` weitergegeben — landet im Audit-Log.
 
-## Permission-Matrix (Stand Stage 3 fertig)
+## Permission-Matrix (Stage 3 final)
 
-Wird waehrend Tasks 4-10 nach und nach gefuellt. Final konsolidiert in Task 12.
+| Block | Tools | free | confirm | admin |
+|---|---|---|---|---|
+| Time/Hello | 3 | 3 | 0 | 0 |
+| Windows | 6 | 3 | 3 (open_app, close_app, kill_process) | 0 |
+| Mail | 4 | 3 | 1 (send) | 0 |
+| Calendar | 3 | 3 | 0 | 0 |
+| Browser | 8 | 5 | 3 (close_tab, click, fill) | 0 |
+| Messaging | 5 | 1 (last_received) | 4 (alle send) | 0 |
+| Admin | 10 | 0 | 0 | 10 |
+| **Total** | **39** | **18** | **11** | **10** |
 
-| Block | Tools | Permission-Levels |
-|---|---|---|
-| Time/Hello | 3 | alle `free` |
-| Windows | 6 | 3 `free`, 3 `confirm` (open_app, close_app, kill_process) |
-| Mail | 4 | 3 `free`, 1 `confirm` (send) |
-| Calendar | 3 | alle `free` |
-| Browser | 8 | 5 `free`, 3 `confirm` (close_tab, click, fill) |
-| Messaging | 5 | 1 `free` (last_received), 4 `confirm` (alle send) |
-| Admin | 10 | alle `admin` (PIN am Tray) |
-| **Total** | **39** | **22 free / 11 confirm / 10 admin / 0 denied** |
+Verifiziert durch [tests/tools/c3po/test_permissions_config.py](../../tests/tools/c3po/test_permissions_config.py).
 
 ## Test-Strategie
 
