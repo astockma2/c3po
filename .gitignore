@@ -111,3 +111,10 @@ learning.db
 **/learning/benchmarks/
 **/teacher_traces/
 *.session.json
+
+# ---------------------------------------------------------------------------
+# C3PO-spezifisch (Andre's Fork)
+# ---------------------------------------------------------------------------
+piper-models/
+data/*.log
+!data/audit-legacy.log
