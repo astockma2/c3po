@@ -5,8 +5,14 @@
 
 [admin]
 tools = [
-    # Beispiele - in Stage 3 werden die echten Admin-Tools hier eingetragen:
-    # "admin.reboot",
-    # "admin.shutdown",
-    # "admin.cleanup",
+    "admin.reboot",
+    "admin.shutdown",
+    "admin.cancel_shutdown",
+    "admin.update_check",
+    "admin.cleanup_temp",
+    "admin.flush_dns",
+    "admin.restart_service",
+    "admin.list_services",
+    "admin.kill_process_force",
+    "admin.git_pull_repo",
 ]

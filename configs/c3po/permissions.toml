@@ -12,4 +12,55 @@
 # Tools, die hier NICHT stehen, werden default-deny abgelehnt.
 
 [tools]
-# Initial leer. Stage-3-Tools (Mail/Calendar/Browser/Admin) tragen sich hier ein.
+# Stage 3 Sub-Stufe 3.1 — Time + Hello (alle free)
+"time.now" = "free"
+"time.date" = "free"
+"hello.greet" = "free"
+
+# Stage 3 Sub-Stufe 3.2 — Windows (3 confirm, 3 free)
+"windows.open_app" = "confirm"
+"windows.close_app" = "confirm"
+"windows.kill_process" = "confirm"
+"windows.list_processes" = "free"
+"windows.lock_screen" = "free"
+"windows.notify" = "free"
+
+# Stage 3 Sub-Stufe 3.3 — Mail (3 free, 1 confirm)
+"mail.list_unread" = "free"
+"mail.read" = "free"
+"mail.search" = "free"
+"mail.send" = "confirm"
+
+# Stage 3 Sub-Stufe 3.4 — Calendar (3 free)
+"calendar.upcoming" = "free"
+"calendar.list" = "free"
+"calendar.search" = "free"
+
+# Stage 3 Sub-Stufe 3.5 — Browser (5 free, 3 confirm)
+"browser.open_url" = "free"
+"browser.new_tab" = "free"
+"browser.list_tabs" = "free"
+"browser.close_tab" = "confirm"
+"browser.click" = "confirm"
+"browser.fill" = "confirm"
+"browser.screenshot" = "free"
+"browser.read_page" = "free"
+
+# Stage 3 Sub-Stufe 3.6 — Messaging (1 free, 4 confirm)
+"telegram.send" = "confirm"
+"whatsapp.send" = "confirm"
+"signal.send" = "confirm"
+"slack.send" = "confirm"
+"messaging.last_received" = "free"
+
+# Stage 3 Sub-Stufe 3.7 — Admin (alle admin, PIN am Tray + admin_whitelist.toml)
+"admin.reboot" = "admin"
+"admin.shutdown" = "admin"
+"admin.cancel_shutdown" = "admin"
+"admin.update_check" = "admin"
+"admin.cleanup_temp" = "admin"
+"admin.flush_dns" = "admin"
+"admin.restart_service" = "admin"
+"admin.list_services" = "admin"
+"admin.kill_process_force" = "admin"
+"admin.git_pull_repo" = "admin"
