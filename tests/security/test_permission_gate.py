@@ -157,6 +157,65 @@ async def test_confirm_unknown_prompt_id_returns_false(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_check_confirm_times_out_after_default(tmp_path):
+    """Wenn niemand confirm() ruft, resolved das Future nach default_timeout zu False."""
+    import asyncio
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"mail.send": "confirm"})
+    gate = PermissionGate(config_path=config, default_timeout=0.05)
+    result = await gate.check("mail.send", {}, channel="voice_local")
+    fut, _ = gate._pending.get(result.prompt_id, (None, None))
+    assert fut is not None
+
+    granted = await asyncio.wait_for(fut, timeout=0.5)
+    assert granted is False
+    # Nach Timeout muss die Map sauber sein
+    assert result.prompt_id not in gate._pending
+
+
+@pytest.mark.asyncio
+async def test_confirm_after_timeout_returns_false(tmp_path):
+    """Wenn confirm() NACH dem Timeout kommt, returnt es False (Future schon weg)."""
+    import asyncio
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"mail.send": "confirm"})
+    gate = PermissionGate(config_path=config, default_timeout=0.05)
+    result = await gate.check("mail.send", {}, channel="voice_local")
+
+    # warten bis Timeout sicher gefeuert hat
+    await asyncio.sleep(0.15)
+    granted = await gate.confirm(result.prompt_id, "yes")
+    assert granted is False
+
+
+@pytest.mark.asyncio
+async def test_concurrent_checks_get_different_prompt_ids(tmp_path):
+    """Zwei parallele check()-Calls -> verschiedene UUIDs, beide in _pending."""
+    import asyncio
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"mail.send": "confirm"})
+    gate = PermissionGate(config_path=config, default_timeout=10.0)
+
+    r1, r2 = await asyncio.gather(
+        gate.check("mail.send", {"to": "a"}, channel="voice_local"),
+        gate.check("mail.send", {"to": "b"}, channel="telegram"),
+    )
+    assert r1.prompt_id != r2.prompt_id
+    assert len(gate._pending) == 2
+
+    # Beide aufloesen, jeder geht durch
+    g1, g2 = await asyncio.gather(
+        gate.confirm(r1.prompt_id, "yes"),
+        gate.confirm(r2.prompt_id, "no"),
+    )
+    assert g1 is True
+    assert g2 is False
+
+
+@pytest.mark.asyncio
 async def test_admin_tool_not_in_whitelist_denied(tmp_path):
     """ADMIN-Tool, das NICHT in admin_whitelist.toml steht -> sofort denied."""
     from openjarvis.security.permission_gate import PermissionGate

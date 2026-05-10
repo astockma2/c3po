@@ -43,6 +43,7 @@ class PermissionGate:
         admin_whitelist_path: Optional[Path] = None,
         pin_check: Optional[PinCheck] = None,
         bus: Optional[EventBus] = None,
+        default_timeout: float = 30.0,
     ) -> None:
         self._tools: Dict[str, PermissionLevel] = self._load_toml(config_path)
         self._admin_whitelist: Set[str] = (
@@ -53,6 +54,7 @@ class PermissionGate:
         # Default: alle PINs ablehnen, wenn kein Checker injiziert wurde.
         self._pin_check: PinCheck = pin_check or (lambda pin: False)
         self._bus = bus
+        self._default_timeout = default_timeout
         self._pending: Dict[str, _PendingEntry] = {}
         self._lock = asyncio.Lock()
 
@@ -152,7 +154,8 @@ class PermissionGate:
         event_type: EventType,
         result_factory,
     ) -> PermissionResult:
-        """Erzeugt UUID, registriert (Future, kind), publiziert Event."""
+        """Erzeugt UUID, registriert (Future, kind), publiziert Event,
+        startet Auto-Decline-Watcher."""
         prompt_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         async with self._lock:
@@ -167,7 +170,28 @@ class PermissionGate:
                     "channel": channel,
                 },
             )
+        loop.create_task(self._auto_decline(prompt_id))
         return result_factory(prompt_id)
+
+    async def _auto_decline(self, prompt_id: str) -> None:
+        """Nach default_timeout Sekunden: pop unter Lock, wenn Future noch nicht
+        resolved -> set_result(False)."""
+        try:
+            await asyncio.sleep(self._default_timeout)
+        except asyncio.CancelledError:
+            return
+        async with self._lock:
+            entry = self._pending.pop(prompt_id, None)
+        if entry is None:
+            return  # confirm() war schneller
+        fut, _kind = entry
+        if not fut.done():
+            fut.set_result(False)
+            if self._bus is not None:
+                self._bus.publish(
+                    EventType.PERMISSION_RESOLVED,
+                    {"prompt_id": prompt_id, "granted": False, "reason": "timeout"},
+                )
 
     async def confirm(self, prompt_id: str, response: str) -> bool:
         """Vom Tray/Channel gerufen mit der User-Antwort.
