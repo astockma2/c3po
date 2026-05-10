@@ -32,8 +32,15 @@ def test_record_until_silence_stops_after_silence_window():
             vad_aggressiveness=2, max_seconds=10,
         )
 
-    assert len(audio_bytes) > 0
-    assert len(audio_bytes) < len(_voice_frame()) * 35
+    voice_chunk_size = len(_voice_frame())
+    # webrtcvad klassifiziert die ersten ~3 Stille-Frames nach Sprache noch als
+    # voice (interner Hangover), daher: 8 voice-erkannte Frames + 26 silence
+    # zum Ausloesen des Breaks (silence_ms=800 / chunk_ms=30 = 26).
+    expected_chunks = 8 + 26
+    expected_bytes = expected_chunks * voice_chunk_size
+    assert len(audio_bytes) == expected_bytes, (
+        f"expected {expected_bytes} bytes (={expected_chunks} chunks), got {len(audio_bytes)}"
+    )
 
 
 def test_record_until_silence_respects_max_seconds():
@@ -61,5 +68,16 @@ def test_record_until_silence_rejects_invalid_chunk_ms():
     with pytest.raises(ValueError, match="chunk_ms muss 10/20/30 sein"):
         record_until_silence(
             sample_rate=16000, chunk_ms=25, silence_ms=800,
+            vad_aggressiveness=2, max_seconds=1,
+        )
+
+
+def test_record_until_silence_rejects_invalid_sample_rate():
+    """webrtcvad braucht 8000/16000/32000/48000 Hz."""
+    from openjarvis.speech._audio import record_until_silence
+
+    with pytest.raises(ValueError, match="sample_rate muss 8000/16000/32000/48000 sein"):
+        record_until_silence(
+            sample_rate=44100, chunk_ms=30, silence_ms=800,
             vad_aggressiveness=2, max_seconds=1,
         )

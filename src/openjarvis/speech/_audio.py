@@ -60,9 +60,13 @@ def record_until_silence(
     """
     if chunk_ms not in (10, 20, 30):
         raise ValueError(f"chunk_ms muss 10/20/30 sein, war {chunk_ms}")
+    if sample_rate not in (8000, 16000, 32000, 48000):
+        raise ValueError(
+            f"sample_rate muss 8000/16000/32000/48000 sein, war {sample_rate}"
+        )
 
     vad = webrtcvad.Vad(vad_aggressiveness)
-    silence_chunks_needed = silence_ms // chunk_ms
+    silence_chunks_needed = max(1, silence_ms // chunk_ms)
     max_chunks = (max_seconds * 1000) // chunk_ms
 
     frames: list[bytes] = []
