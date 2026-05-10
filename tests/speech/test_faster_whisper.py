@@ -53,6 +53,35 @@ def test_faster_whisper_transcribe():
         assert result.duration_seconds == 1.5
 
 
+def test_faster_whisper_transcribe_tempfile_readable_on_windows():
+    """Regression: tmp-Datei muss waehrend transcribe() lesbar sein.
+
+    Windows-Bug: NamedTemporaryFile(delete=True) haelt exklusiven Handle.
+    Modell-Aufruf, der tmp.name oeffnet, kracht mit PermissionError.
+    """
+    mock_model = MagicMock()
+
+    def _fake_transcribe(path, **kwargs):
+        # Echte File-Oeffnung — schlaegt unter Windows fehl, wenn der Bug
+        # noch da ist.
+        with open(path, "rb") as f:
+            assert f.read() == b"fake audio bytes"
+        seg = MagicMock(text=" ok", start=0.0, end=0.5, avg_logprob=-0.1)
+        info = MagicMock(language="de", language_probability=0.9, duration=0.5)
+        return ([seg], info)
+
+    mock_model.transcribe.side_effect = _fake_transcribe
+
+    with patch(
+        "openjarvis.speech.faster_whisper.WhisperModel",
+        return_value=mock_model,
+    ):
+        backend = FasterWhisperBackend(model_size="base", device="cpu")
+        result = backend.transcribe(b"fake audio bytes")
+
+    assert result.text == "ok"
+
+
 def test_faster_whisper_health_no_model():
     """Health returns False before model is loaded."""
     with patch(
