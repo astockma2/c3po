@@ -30,3 +30,8 @@
 "mail.read" = "free"
 "mail.search" = "free"
 "mail.send" = "confirm"
+
+# Stage 3 Sub-Stufe 3.4 — Calendar (3 free)
+"calendar.upcoming" = "free"
+"calendar.list" = "free"
+"calendar.search" = "free"
