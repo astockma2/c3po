@@ -27,3 +27,24 @@ vad_silence_ms = 800     # Stille-Dauer bevor Recording stoppt
 mic_device = ""          # leer = System-Default
 mic_sample_rate = 16000
 audio_chunk_ms = 30      # WebRTC-VAD braucht 10/20/30
+
+
+[voice_brain]
+# Claudi-Proxy auf VPS (Stage 4). Kein direkter Anthropic-API-Key noetig —
+# der Service auf gemi.c3po42.de macht den OAuth via Andre's Claude-Max-Sub.
+claudi_url = "https://gemi.c3po42.de"
+# Token aus dem VPS-Service. Per ENV-Var CLAUDI_PROXY_TOKEN ueberschreibbar.
+claudi_token = "gemi2026"
+
+# LLM-Modell. Proxy ignoriert den Hint aktuell und nutzt immer claude-opus-4-7,
+# der Eintrag dokumentiert den gewuenschten Wert fuer den Tag, an dem der
+# Proxy Modell-Routing kann.
+model = "claude-haiku-4-5"
+
+# Max ReAct-Turns pro Voice-Anfrage. 6 reicht fuer Multi-Step-Queries
+# wie "lies meine Mails von Nicole und sag mir was sie wollte".
+max_turns = 6
+
+# Tool-Kategorien, die der Voice-Brain anbietet. ``admin`` per Default
+# AUSGESCHLOSSEN — PIN-Eingabe per Sprache ist zu unsicher.
+tool_categories = ["time", "social", "mail", "calendar", "browser", "messaging", "windows"]
