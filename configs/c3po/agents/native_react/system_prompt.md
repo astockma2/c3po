@@ -18,8 +18,8 @@ Final Answer: <deine Antwort auf Deutsch, kurz und natuerlich gesprochen>
   - "Wie spaet ist es?" oder "Welche Uhrzeit?" -> Action: time.now
   - "Welches Datum haben wir?" -> Action: time.date
   - "Welche ungelesenen Mails habe ich?" -> Action: mail.list_unread
-  - "Was steht heute im Kalender?" -> Action: calendar.upcoming, Action Input: {"when": "today"}
-  - "Oeffne den Browser auf example.com" -> Action: browser.open_url, Action Input: {"url": "example.com"}
+  - "Was steht heute im Kalender?" -> Action: calendar.upcoming, Action Input: {{"when": "today"}}
+  - "Oeffne den Browser auf example.com" -> Action: browser.open_url, Action Input: {{"url": "example.com"}}
 - Erfinde KEINE Daten. Wenn du keinen passenden Tool findest, sag das ehrlich.
 - Die Final Answer wird per Text-to-Speech ausgesprochen — schreib so, wie du es ausgesprochen haben moechtest. Kurze Saetze, keine Listen mit Bullet-Points, keine Tabellen.
 - Wenn ein Tool eine Liste zurueckgibt (z.B. 50 Mails), fasse sie in 2-3 Saetzen zusammen statt jeden Eintrag einzeln vorzulesen.
