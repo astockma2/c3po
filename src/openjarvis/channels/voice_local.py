@@ -32,23 +32,58 @@ logger = logging.getLogger(__name__)
 
 
 def _get_tts_backend(name: str = "piper", *, model_dir: str = "piper-models"):
-    """Wrapper damit Tests gemockt werden koennen."""
+    """Wrapper damit Tests gemockt werden koennen.
+
+    Konstruktor-Argumente sind backend-spezifisch:
+    - "piper" braucht model_dir
+    - "gemini" liest GOOGLE_API_KEY/GEMINI_API_KEY aus ENV
+    - andere: zero-arg
+    """
     cls = TTSRegistry.get(name)
     if cls is None:
         raise RuntimeError(f"TTS-Backend '{name}' nicht registriert")
-    return cls(model_dir=model_dir)
+    if name == "piper":
+        return cls(model_dir=model_dir)
+    return cls()  # gemini_tts und andere: ENV-basierte Auth, zero-arg
 
 
-def _get_stt_backend(name: str = "faster-whisper", *, model_size: str = "base"):
+def _pcm_to_wav(pcm: bytes, *, sample_rate: int = 16000) -> bytes:
+    """Wrap rohe int16-mono-PCM-Bytes in einen WAV-Container.
+
+    record_until_silence liefert rohes PCM, faster-whisper/av braucht
+    aber einen kompletten Container - sonst InvalidDataError.
+    """
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)  # int16
+        w.setframerate(sample_rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
+def _get_stt_backend(
+    name: str = "faster-whisper",
+    *,
+    model_size: str = "base",
+    device: str = "auto",
+    compute_type: str = "float16",
+):
     """Wrapper fuer SpeechRegistry-Lookup, mockbar.
 
     Registry-Key ist mit Bindestrich (`faster-whisper`) registriert,
     nicht Underscore.
+
+    device="auto" waehlt CUDA wenn verfuegbar - auf reinen CPU-Maschinen
+    waere "cpu" + compute_type="int8" die robuste Wahl.
     """
     cls = SpeechRegistry.get(name)
     if cls is None:
         raise RuntimeError(f"STT-Backend '{name}' nicht registriert")
-    return cls(model_size=model_size)
+    return cls(model_size=model_size, device=device, compute_type=compute_type)
 
 
 def _mic_chunk_iter(*, sample_rate: int = 16000, chunk_samples: int = 1280):
@@ -70,7 +105,12 @@ def _mic_chunk_iter(*, sample_rate: int = 16000, chunk_samples: int = 1280):
 
 
 def _play_audio(audio_bytes: bytes, sample_rate: int) -> None:
-    """Spielt WAV-Bytes ueber die Default-Audio-Out-Karte. Wird in Tests gemockt."""
+    """Spielt WAV-Bytes ueber die Default-Audio-Out-Karte.
+
+    Resampelt linear auf die native Rate des Default-Output-Geraets,
+    weil viele Realtek-Treiber 22050 Hz nicht sauber hochrechnen
+    (Symptom: zerrt/abgehackt). Fuer Tests gemockt.
+    """
     import io
     import wave
 
@@ -79,10 +119,26 @@ def _play_audio(audio_bytes: bytes, sample_rate: int) -> None:
 
     with wave.open(io.BytesIO(audio_bytes), "rb") as w:
         frames = w.readframes(w.getnframes())
-        actual_rate = w.getframerate()
+        src_rate = w.getframerate()
 
     audio_np = np.frombuffer(frames, dtype=np.int16)
-    sd.play(audio_np, samplerate=actual_rate, blocking=True)
+
+    try:
+        device_rate = int(sd.query_devices(kind="output")["default_samplerate"])
+    except Exception:
+        device_rate = src_rate
+
+    if device_rate != src_rate and len(audio_np) > 1:
+        ratio = device_rate / src_rate
+        new_len = int(len(audio_np) * ratio)
+        old_x = np.linspace(0.0, 1.0, num=len(audio_np), endpoint=False)
+        new_x = np.linspace(0.0, 1.0, num=new_len, endpoint=False)
+        audio_np = np.interp(new_x, old_x, audio_np.astype(np.float32)).astype(np.int16)
+        play_rate = device_rate
+    else:
+        play_rate = src_rate
+
+    sd.play(audio_np, samplerate=play_rate, blocking=True)
 
 
 @ChannelRegistry.register("voice_local")
@@ -99,12 +155,20 @@ class VoiceLocalChannel(BaseChannel):
         tts_model_dir: str = "piper-models",
         tts_voice: str = "de_DE-thorsten_emotional-medium",
         tts_backend_name: str = "piper",
+        stt_model_size: str = "base",
+        stt_device: str = "auto",
+        stt_compute_type: str = "float16",
+        stt_language: str = "",
     ) -> None:
         self._wakeword_model = wakeword_model
         self._wake_name = wake_name
         self._tts_model_dir = tts_model_dir
         self._tts_voice = tts_voice
         self._tts_backend_name = tts_backend_name
+        self._stt_model_size = stt_model_size
+        self._stt_device = stt_device
+        self._stt_compute_type = stt_compute_type
+        self._stt_language = stt_language
         self._status = ChannelStatus.DISCONNECTED
         self._message_handler: Optional[ChannelHandler] = None
         self._listen_task: Optional[asyncio.Task] = None
@@ -168,15 +232,23 @@ class VoiceLocalChannel(BaseChannel):
             if not is_wake:
                 continue
 
-            audio_bytes = record_until_silence(
+            pcm = record_until_silence(
                 sample_rate=16000,
                 chunk_ms=30,
                 silence_ms=800,
                 vad_aggressiveness=2,
                 max_seconds=10,
             )
-            stt = _get_stt_backend()
-            result = stt.transcribe(audio_bytes, format="wav")
+            wav = _pcm_to_wav(pcm, sample_rate=16000)
+            stt = _get_stt_backend(
+                model_size=self._stt_model_size,
+                device=self._stt_device,
+                compute_type=self._stt_compute_type,
+            )
+            stt_kwargs = {"format": "wav"}
+            if self._stt_language:
+                stt_kwargs["language"] = self._stt_language
+            result = stt.transcribe(wav, **stt_kwargs)
 
             if self._message_handler is None:
                 return

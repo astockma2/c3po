@@ -163,6 +163,29 @@ def test_registry_has_voice_local():
     assert cls.__name__ == "VoiceLocalChannel"
 
 
+def test_get_tts_backend_piper_passes_model_dir():
+    """_get_tts_backend('piper', model_dir=...) muss model_dir durchreichen."""
+    from openjarvis.channels.voice_local import _get_tts_backend
+    from openjarvis.core.registry import TTSRegistry
+
+    fake_cls = MagicMock()
+    with patch.object(TTSRegistry, "get", return_value=fake_cls):
+        _get_tts_backend("piper", model_dir="my-models")
+    fake_cls.assert_called_once_with(model_dir="my-models")
+
+
+def test_get_tts_backend_gemini_zero_arg():
+    """_get_tts_backend('gemini') darf model_dir NICHT durchreichen
+    (Gemini-Konstruktor kennt das nicht; ENV-Auth)."""
+    from openjarvis.channels.voice_local import _get_tts_backend
+    from openjarvis.core.registry import TTSRegistry
+
+    fake_cls = MagicMock()
+    with patch.object(TTSRegistry, "get", return_value=fake_cls):
+        _get_tts_backend("gemini")
+    fake_cls.assert_called_once_with()
+
+
 def test_zero_arg_construction_for_contract():
     """Contract: VoiceLocalChannel() ohne Args muss konstruierbar sein."""
     ch = VoiceLocalChannel()
@@ -259,6 +282,61 @@ async def test_listen_once_without_wake_returns_silently():
         await ch._listen_once()
 
     fake_handler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_listen_once_passes_wav_to_stt():
+    """STT bekommt einen kompletten WAV-Container, nicht rohes PCM.
+
+    record_until_silence liefert PCM int16; voice_local muss einen
+    WAV-Header drumwickeln, sonst kann faster-whisper / av das nicht
+    dekodieren (av.error.InvalidDataError im Live-Test).
+    """
+    import wave
+    import io
+
+    captured = {}
+
+    def _capture(audio, **kw):
+        captured["bytes"] = audio
+        return MagicMock(text="ok", language="de")
+
+    fake_stt = MagicMock()
+    fake_stt.transcribe.side_effect = _capture
+
+    fake_detector = MagicMock()
+    fake_detector.process.side_effect = [(True, 0.9)]
+
+    pcm = b"\x00\x01" * 16000  # 1 sec int16 @ 16kHz
+
+    with patch(
+        "openjarvis.channels.voice_local.WakeWordDetector",
+        return_value=fake_detector,
+    ), patch(
+        "openjarvis.channels.voice_local._mic_chunk_iter",
+        return_value=iter([b"\x00\x00" * 1280]),
+    ), patch(
+        "openjarvis.channels.voice_local.record_until_silence",
+        return_value=pcm,
+    ), patch(
+        "openjarvis.channels.voice_local._get_stt_backend",
+        return_value=fake_stt,
+    ):
+        ch = VoiceLocalChannel(
+            wakeword_model="dummy.onnx",
+            wake_name="hey_jarvis_v0.1",
+            tts_model_dir="piper-models",
+        )
+        ch.on_message(MagicMock(return_value=None))
+        await ch._listen_once()
+
+    audio = captured["bytes"]
+    # Muss als WAV lesbar sein
+    with wave.open(io.BytesIO(audio), "rb") as w:
+        assert w.getnchannels() == 1
+        assert w.getsampwidth() == 2
+        assert w.getframerate() == 16000
+        assert w.readframes(w.getnframes()) == pcm
 
 
 @pytest.mark.asyncio
