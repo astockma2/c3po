@@ -265,9 +265,12 @@ class ToolExecutor:
                 {"tool": tool_call.name, "arguments": params},
             )
 
-        # Execute with timeout
+        # Execute with timeout. Use perf_counter — time.time() rounds to
+        # millisecond resolution on some Windows builds, causing
+        # latency_seconds to be exactly 0.0 for very fast tools and
+        # breaking downstream tests/timing reports.
         timeout = tool.spec.timeout_seconds or self._default_timeout
-        t0 = time.time()
+        t0 = time.perf_counter()
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(tool.execute, **params)
@@ -289,7 +292,7 @@ class ToolExecutor:
                 content=f"Tool execution error: {exc}",
                 success=False,
             )
-        latency = time.time() - t0
+        latency = time.perf_counter() - t0
         result.latency_seconds = latency
         result.metadata["arguments"] = params
 
