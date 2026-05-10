@@ -20,6 +20,7 @@ from openjarvis.server.app import create_app  # noqa: E402
 def _make_engine(content="Hello from server", models=None):
     engine = MagicMock()
     engine.engine_id = "mock"
+    engine.is_cloud = False
     engine.health.return_value = True
     engine.list_models.return_value = models or ["test-model"]
     engine.generate.return_value = {
@@ -39,6 +40,25 @@ def _make_engine(content="Hello from server", models=None):
         **kwargs,
     ):
         for token in ["Hello", " ", "world"]:
+            yield token
+
+    engine.stream = mock_stream
+    return engine
+
+
+def _make_codex_engine():
+    engine = _make_engine(models=["gpt-5.5", "gpt-5.4"])
+    engine.engine_id = "codex_cli"
+
+    async def mock_stream(
+        messages,
+        *,
+        model,
+        temperature=0.7,
+        max_tokens=1024,
+        **kwargs,
+    ):
+        for token in ["Codex", " ready"]:
             yield token
 
     engine.stream = mock_stream
@@ -229,6 +249,65 @@ class TestChatCompletions:
                     content += delta_content
         assert content == "Hello world"
 
+    def test_streaming_codex_model_uses_engine_stream(self):
+        engine = _make_codex_engine()
+        app = create_app(engine, "gpt-5.5")
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gpt-5.5",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "stream": True,
+            },
+        )
+        assert resp.status_code == 200
+        content = ""
+        telemetry_engine = ""
+        for line in resp.text.strip().split("\n"):
+            if line.startswith("data:") and "[DONE]" not in line:
+                data = json.loads(line[5:].strip())
+                content += data.get("choices", [{}])[0].get("delta", {}).get(
+                    "content"
+                ) or ""
+                telemetry_engine = data.get("telemetry", {}).get(
+                    "engine", telemetry_engine
+                )
+        assert content == "Codex ready"
+        assert telemetry_engine == "codex_cli"
+
+    def test_streaming_codex_model_inside_multi_engine_uses_engine_stream(self):
+        from openjarvis.engine.multi import MultiEngine
+
+        codex = _make_codex_engine()
+        cloud = _make_engine(content="wrong", models=["gpt-4o"])
+        cloud.is_cloud = True
+        engine = MultiEngine([("codex_cli", codex), ("cloud", cloud)])
+        app = create_app(engine, "gpt-5.5")
+        client = TestClient(app)
+        resp = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gpt-5.5",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "stream": True,
+            },
+        )
+        assert resp.status_code == 200
+        content = ""
+        telemetry_engine = ""
+        for line in resp.text.strip().split("\n"):
+            if line.startswith("data:") and "[DONE]" not in line:
+                data = json.loads(line[5:].strip())
+                content += data.get("choices", [{}])[0].get("delta", {}).get(
+                    "content"
+                ) or ""
+                telemetry_engine = data.get("telemetry", {}).get(
+                    "engine", telemetry_engine
+                )
+        assert content == "Codex ready"
+        assert telemetry_engine == "codex_cli"
+
     def test_finish_reason_default(self, client):
         resp = client.post(
             "/v1/chat/completions",
@@ -269,6 +348,15 @@ class TestModelsEndpoint:
         resp = client.get("/v1/models")
         data = resp.json()
         assert len(data["data"]) == 3
+
+    def test_codex_models_are_visible_even_with_cloud_like_names(self):
+        engine = _make_codex_engine()
+        app = create_app(engine, "gpt-5.5")
+        client = TestClient(app)
+        resp = client.get("/v1/models")
+        data = resp.json()
+        ids = [m["id"] for m in data["data"]]
+        assert "gpt-5.5" in ids
 
 
 # ---------------------------------------------------------------------------

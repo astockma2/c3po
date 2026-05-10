@@ -284,7 +284,10 @@ async def _stream_google(
 
 
 def _ollama_host() -> str:
-    return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    host = (os.environ.get("OLLAMA_HOST") or "http://localhost:11434").strip()
+    if "://" not in host:
+        host = f"http://{host}"
+    return host.rstrip("/")
 
 
 async def stream_local(

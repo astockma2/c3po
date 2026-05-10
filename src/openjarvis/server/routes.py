@@ -27,6 +27,35 @@ from openjarvis.server.models import (
 router = APIRouter()
 
 
+def _unwrap_engine(engine):
+    """Remove transparent wrappers so routing decisions can inspect real engines."""
+    current = engine
+    seen: set[int] = set()
+    while id(current) not in seen:
+        seen.add(id(current))
+        inner = getattr(current, "_inner", None) or getattr(current, "_engine", None)
+        if inner is None or inner is current:
+            break
+        current = inner
+    return current
+
+
+def _engine_for_model(engine, model: str):
+    """Best-effort lookup of the engine that owns a model."""
+    unwrapped = _unwrap_engine(engine)
+    if "_engine_for" in dir(type(unwrapped)) and model:
+        try:
+            return _unwrap_engine(unwrapped._engine_for(model))
+        except Exception:
+            return None
+    return unwrapped
+
+
+def _is_codex_cli_model(engine, model: str) -> bool:
+    routed = _engine_for_model(engine, model)
+    return getattr(routed, "engine_id", "") == "codex_cli"
+
+
 def _to_messages(chat_messages) -> list[Message]:
     """Convert Pydantic ChatMessage objects to core Message objects."""
     messages = []
@@ -48,7 +77,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     """Handle chat completion requests (streaming and non-streaming)."""
     engine = request.app.state.engine
     agent = getattr(request.app.state, "agent", None)
-    model = request_body.model
+    model = request_body.model or getattr(request.app.state, "model", "")
 
     # Inject memory context into messages before dispatching
     config = getattr(request.app.state, "config", None)
@@ -316,7 +345,8 @@ async def _handle_stream(
 
     # Route directly to the right backend — bypasses engine routing entirely
     # so broken MultiEngine state can never misdirect requests.
-    use_cloud = is_cloud_model(model)
+    use_codex_cli = _is_codex_cli_model(engine, model)
+    use_cloud = is_cloud_model(model) and not use_codex_cli
 
     async def generate():
         # Send role chunk first
@@ -349,16 +379,19 @@ async def _handle_stream(
                 # cloud backend — detected via isinstance so mocks are not
                 # accidentally matched.
                 _use_local_fallback = False
-                try:
-                    from openjarvis.engine.multi import MultiEngine
+                if not use_codex_cli:
+                    try:
+                        from openjarvis.engine.multi import MultiEngine
 
-                    _inner = getattr(engine, "_inner", engine)
-                    if isinstance(_inner, MultiEngine):
-                        _routed = _inner._engine_for(model)
-                        if _routed is not None and getattr(_routed, "is_cloud", False):
-                            _use_local_fallback = True
-                except Exception:
-                    pass
+                        _inner = _unwrap_engine(engine)
+                        if isinstance(_inner, MultiEngine):
+                            _routed = _inner._engine_for(model)
+                            if _routed is not None and getattr(
+                                _routed, "is_cloud", False
+                            ):
+                                _use_local_fallback = True
+                    except Exception:
+                        pass
                 if _use_local_fallback:
                     token_iter = stream_local(
                         model, messages, req.temperature, req.max_tokens
@@ -426,7 +459,10 @@ async def _handle_stream(
         # We use the routing decision (use_cloud) directly rather than
         # unwrapping the engine chain, which can be in a broken state.
         finish_dict.setdefault("telemetry", {})
-        finish_dict["telemetry"]["engine"] = "cloud" if use_cloud else "ollama"
+        if use_codex_cli:
+            finish_dict["telemetry"]["engine"] = "codex_cli"
+        else:
+            finish_dict["telemetry"]["engine"] = "cloud" if use_cloud else "ollama"
 
         if complexity_info is not None:
             finish_dict["complexity"] = complexity_info.model_dump()
@@ -455,7 +491,9 @@ async def list_models(request: Request) -> ModelListResponse:
     # Fall back to direct Ollama query only when the engine returns nothing.
     engine = request.app.state.engine
     all_ids = engine.list_models()
-    model_ids = [m for m in all_ids if not is_cloud_model(m)]
+    model_ids = [
+        m for m in all_ids if not is_cloud_model(m) or _is_codex_cli_model(engine, m)
+    ]
     if not model_ids:
         model_ids = await list_local_models()
 

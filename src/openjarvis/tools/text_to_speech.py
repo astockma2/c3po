@@ -8,6 +8,7 @@ from typing import Any
 
 from openjarvis.core.registry import ToolRegistry, TTSRegistry
 from openjarvis.core.types import ToolResult
+from openjarvis.speech.text_normalizer import normalize_for_tts
 from openjarvis.tools._stubs import BaseTool, ToolSpec
 
 
@@ -39,11 +40,15 @@ class TextToSpeechTool(BaseTool):
                     },
                     "backend": {
                         "type": "string",
-                        "description": "TTS backend (cartesia, kokoro, openai_tts).",
+                        "description": "TTS backend (cartesia, kokoro, openai_tts, gemini_tts).",
                     },
                     "output_dir": {
                         "type": "string",
                         "description": "Directory to save the audio file.",
+                    },
+                    "speed": {
+                        "type": "number",
+                        "description": "Speech speed multiplier.",
                     },
                 },
                 "required": ["text"],
@@ -56,7 +61,7 @@ class TextToSpeechTool(BaseTool):
         # Ensure TTS backends are registered
         import openjarvis.speech  # noqa: F401
 
-        text = params.get("text", "")
+        text = normalize_for_tts(params.get("text", ""))
         voice_id = params.get("voice_id", "")
         backend_key = params.get("backend", "cartesia")
         output_dir = params.get("output_dir", "")

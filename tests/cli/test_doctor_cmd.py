@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from openjarvis.cli import cli
 from openjarvis.cli.doctor_cmd import (
+    _check_config_parses,
     _check_config_exists,
     _check_default_model,
     _check_nodejs,
@@ -90,6 +91,33 @@ class TestCheckConfigMissing:
             result = _check_config_exists()
         assert result.status == "warn"
         assert "Not found" in result.message
+
+    def test_check_config_exists_uses_env_path(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """OPENJARVIS_CONFIG should be reported as the active config path."""
+        config_path = tmp_path / "custom.toml"
+        config_path.write_text("[engine]\ndefault = 'codex_cli'\n", encoding="utf-8")
+        monkeypatch.setenv("OPENJARVIS_CONFIG", str(config_path))
+
+        result = _check_config_exists()
+
+        assert result.status == "ok"
+        assert str(config_path.resolve()) == result.message
+
+    def test_check_config_parses_uses_env_path(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """Config parsing should validate the same path shown by doctor."""
+        config_path = tmp_path / "custom.toml"
+        config_path.write_text("[engine]\ndefault = 'codex_cli'\n", encoding="utf-8")
+        monkeypatch.setenv("OPENJARVIS_CONFIG", str(config_path))
+
+        with patch("openjarvis.cli.doctor_cmd.load_config") as load:
+            result = _check_config_parses()
+
+        assert result.status == "ok"
+        load.assert_called_once_with(config_path.resolve())
 
 
 class TestCheckEngineProbing:

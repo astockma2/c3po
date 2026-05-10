@@ -29,10 +29,16 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     router = APIRouter(prefix="/api/digest", tags=["digest"])
     store = DigestStore(db_path=db_path) if db_path else DigestStore()
 
+    def _digest_timezone() -> str:
+        try:
+            return load_config().digest.timezone
+        except Exception:
+            return "UTC"
+
     @router.get("")
     async def get_digest():
         """Return the latest digest artifact."""
-        artifact = store.get_today()
+        artifact = store.get_today(timezone_name=_digest_timezone())
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
         return {
@@ -50,7 +56,7 @@ def create_digest_router(*, db_path: str = "") -> APIRouter:
     @router.get("/audio")
     async def get_digest_audio():
         """Stream the digest audio file."""
-        artifact = store.get_today()
+        artifact = store.get_today(timezone_name=_digest_timezone())
         if artifact is None:
             raise HTTPException(status_code=404, detail="No digest for today")
         if not artifact.audio_path.exists():

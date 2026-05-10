@@ -24,6 +24,11 @@ except ImportError:
     pass
 
 try:
+    import openjarvis.connectors.strato_mail  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import openjarvis.connectors.gdrive  # noqa: F401
 except ImportError:
     pass  # httpx may not be installed
@@ -75,6 +80,11 @@ except ImportError:
 
 try:
     import openjarvis.connectors.gcalendar  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import openjarvis.connectors.thunderbird_calendar  # noqa: F401
 except ImportError:
     pass
 

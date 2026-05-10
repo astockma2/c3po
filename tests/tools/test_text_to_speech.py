@@ -33,7 +33,7 @@ def test_tts_tool_execute(tmp_path):
         mock_registry.get.return_value = mock_backend_cls
 
         result = tool.execute(
-            text="Good morning sir.",
+            text="## Good morning\n- Meeting at 09:30",
             voice_id="jarvis",
             backend="cartesia",
             output_dir=str(tmp_path),
@@ -43,6 +43,12 @@ def test_tts_tool_execute(tmp_path):
     assert "digest.mp3" in result.content
     assert (tmp_path / "digest.mp3").exists()
     assert (tmp_path / "digest.mp3").read_bytes() == b"fake-audio-data"
+    mock_backend_cls.return_value.synthesize.assert_called_once()
+    assert mock_backend_cls.return_value.synthesize.call_args.kwargs["voice_id"] == "jarvis"
+    normalized_text = mock_backend_cls.return_value.synthesize.call_args.args[0]
+    assert "##" not in normalized_text
+    assert "- Meeting" not in normalized_text
+    assert "9 Uhr 30" in normalized_text
 
 
 def test_tts_tool_empty_text():

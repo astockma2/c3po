@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-from openjarvis.agents.digest_store import DigestArtifact, DigestStore
+from openjarvis.agents.digest_store import (
+    DigestArtifact,
+    DigestStore,
+    _resolve_timezone,
+)
 
 
 def test_store_and_retrieve(tmp_path):
@@ -48,6 +52,28 @@ def test_get_today(tmp_path):
     today = store.get_today(timezone_name="UTC")
     assert today is not None
     assert today.text == "Today's digest"
+    store.close()
+
+
+def test_resolve_timezone_handles_utc_without_zoneinfo_data():
+    assert _resolve_timezone("UTC") is timezone.utc
+
+
+def test_get_today_falls_back_when_timezone_is_unknown(tmp_path):
+    store = DigestStore(db_path=str(tmp_path / "digest.db"))
+    artifact = DigestArtifact(
+        text="Fallback timezone digest",
+        audio_path=Path("/tmp/today.mp3"),
+        sections={},
+        sources_used=[],
+        generated_at=datetime.now(),
+        model_used="test-model",
+        voice_used="jarvis",
+    )
+    store.save(artifact)
+    today = store.get_today(timezone_name="Definitely/Not_A_Timezone")
+    assert today is not None
+    assert today.text == "Fallback timezone digest"
     store.close()
 
 
