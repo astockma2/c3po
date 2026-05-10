@@ -35,6 +35,18 @@ class SecurityEventType(str, Enum):
     PII_DETECTED = "pii_detected"
     SENSITIVE_FILE_BLOCKED = "sensitive_file_blocked"
     TOOL_BLOCKED = "tool_blocked"
+    PERMISSION_REQUESTED = "permission_requested"
+    PERMISSION_GRANTED = "permission_granted"
+    PERMISSION_DENIED = "permission_denied"
+
+
+class PermissionLevel(str, Enum):
+    """Wie streng eine Tool-Aktion abgesichert ist."""
+
+    FREE = "free"          # ohne Rueckfrage erlaubt
+    CONFIRM = "confirm"    # User muss am Tray klicken
+    ADMIN = "admin"        # User muss am Tray PIN eingeben
+    DENIED = "denied"      # explizit verboten
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +95,42 @@ class ScanResult:
         return best.threat_level
 
 
+@dataclass(frozen=True, slots=True)
+class PermissionResult:
+    """Ergebnis von PermissionGate.check().
+
+    state: "granted" | "denied" | "needs_confirm" | "needs_pin"
+    """
+
+    state: str
+    prompt_id: str = ""
+    reason: str = ""
+
+    @classmethod
+    def granted(cls) -> "PermissionResult":
+        return cls(state="granted")
+
+    @classmethod
+    def denied(cls, reason: str) -> "PermissionResult":
+        return cls(state="denied", reason=reason)
+
+    @classmethod
+    def needs_confirm(cls, prompt_id: str) -> "PermissionResult":
+        return cls(state="needs_confirm", prompt_id=prompt_id)
+
+    @classmethod
+    def needs_pin(cls, prompt_id: str) -> "PermissionResult":
+        return cls(state="needs_pin", prompt_id=prompt_id)
+
+    @property
+    def is_granted(self) -> bool:
+        return self.state == "granted"
+
+    @property
+    def is_pending(self) -> bool:
+        return self.state in ("needs_confirm", "needs_pin")
+
+
 @dataclass(slots=True)
 class SecurityEvent:
     """A recorded security event for audit logging."""
@@ -95,6 +143,8 @@ class SecurityEvent:
 
 
 __all__ = [
+    "PermissionLevel",
+    "PermissionResult",
     "RedactionMode",
     "ScanFinding",
     "ScanResult",
