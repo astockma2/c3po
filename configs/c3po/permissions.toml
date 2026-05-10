@@ -24,3 +24,9 @@
 "windows.list_processes" = "free"
 "windows.lock_screen" = "free"
 "windows.notify" = "free"
+
+# Stage 3 Sub-Stufe 3.3 — Mail (3 free, 1 confirm)
+"mail.list_unread" = "free"
+"mail.read" = "free"
+"mail.search" = "free"
+"mail.send" = "confirm"
