@@ -11,13 +11,20 @@ Response: {"response": "...", "model": "...", "provider": "..."}
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator, Dict, List, Sequence
+import os
+from collections.abc import AsyncIterator, Sequence
+from typing import Any, Dict, List
 
 import httpx
 
 from openjarvis.core.registry import EngineRegistry
 from openjarvis.core.types import Message
-from openjarvis.engine._stubs import InferenceEngine
+from openjarvis.engine._base import (
+    EngineConnectionError,
+    InferenceEngine,
+    estimate_prompt_tokens,
+    messages_to_dicts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +45,18 @@ class ClaudiProxyEngine(InferenceEngine):
         self,
         *,
         base_url: str = _DEFAULT_BASE_URL,
-        token: str = _DEFAULT_TOKEN,
+        token: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._token = token
-
-    def _headers(self) -> Dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self._token}",
-            "Content-Type": "application/json",
-        }
+        self._token = token or os.environ.get("CLAUDI_PROXY_TOKEN", _DEFAULT_TOKEN)
+        self._client = httpx.Client(
+            base_url=self._base_url,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Content-Type": "application/json",
+            },
+            timeout=_GENERATE_TIMEOUT,
+        )
 
     def generate(
         self,
@@ -60,26 +69,32 @@ class ClaudiProxyEngine(InferenceEngine):
     ) -> Dict[str, Any]:
         """POST an /api/chat/sync, gibt {content, usage}-Dict zurueck."""
         payload = {
-            "messages": [
-                {"role": m.role.value, "content": m.content} for m in messages
-            ],
+            "messages": messages_to_dicts(messages),
             "model": model,
         }
-        resp = httpx.post(
-            f"{self._base_url}/api/chat/sync",
-            json=payload,
-            headers=self._headers(),
-            timeout=_GENERATE_TIMEOUT,
-        )
-        resp.raise_for_status()
+        try:
+            resp = self._client.post("/api/chat/sync", json=payload)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise EngineConnectionError(
+                f"Claudi-Proxy nicht erreichbar: {exc}"
+            ) from exc
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = (resp.text or "")[:200]
+            raise RuntimeError(
+                f"Claudi-Proxy HTTP {resp.status_code}: {body}"
+            ) from exc
         data = resp.json()
         content = data.get("response", "")
+        prompt_tokens = estimate_prompt_tokens(messages)
+        completion_tokens = max(1, len(content) // 4)  # grobe Schaetzung 1 Token ≈ 4 Zeichen
         return {
             "content": content,
             "usage": {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
             },
             "model": data.get("model", model),
             "finish_reason": "stop",
@@ -109,15 +124,14 @@ class ClaudiProxyEngine(InferenceEngine):
 
     def health(self) -> bool:
         try:
-            resp = httpx.get(
-                f"{self._base_url}/api/health",
-                headers=self._headers(),
-                timeout=_HEALTH_TIMEOUT,
-            )
+            resp = self._client.get("/api/health", timeout=_HEALTH_TIMEOUT)
             return resp.status_code == 200
         except Exception:
             logger.debug("ClaudiProxyEngine health-check failed", exc_info=True)
             return False
+
+    def close(self) -> None:
+        self._client.close()
 
 
 __all__ = ["ClaudiProxyEngine"]
