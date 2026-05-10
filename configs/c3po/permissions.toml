@@ -45,3 +45,10 @@
 "browser.fill" = "confirm"
 "browser.screenshot" = "free"
 "browser.read_page" = "free"
+
+# Stage 3 Sub-Stufe 3.6 — Messaging (1 free, 4 confirm)
+"telegram.send" = "confirm"
+"whatsapp.send" = "confirm"
+"signal.send" = "confirm"
+"slack.send" = "confirm"
+"messaging.last_received" = "free"
