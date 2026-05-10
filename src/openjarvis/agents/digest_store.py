@@ -5,9 +5,22 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+
+
+def _resolve_timezone(timezone_name: str):
+    """Return a tzinfo object, tolerating Windows installs without tzdata."""
+    normalized = (timezone_name or "UTC").strip()
+    if normalized.upper() == "UTC":
+        return timezone.utc
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(normalized)
+    except Exception:
+        return None
 
 
 @dataclass
@@ -120,12 +133,11 @@ class DigestStore:
 
     def get_today(self, timezone_name: str = "UTC") -> Optional[DigestArtifact]:
         """Return today's digest if it exists, or None."""
-        try:
-            from zoneinfo import ZoneInfo
-
-            today = datetime.now(ZoneInfo(timezone_name)).strftime("%Y-%m-%d")
-        except ImportError:
+        tzinfo = _resolve_timezone(timezone_name)
+        if tzinfo is None:
             today = datetime.now().strftime("%Y-%m-%d")
+        else:
+            today = datetime.now(tzinfo).strftime("%Y-%m-%d")
 
         row = self._conn.execute(
             "SELECT text, audio_path, sections, sources_used,"

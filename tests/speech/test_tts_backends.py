@@ -104,3 +104,31 @@ def test_openai_tts_synthesize():
 
     assert result.audio == b"fake-openai-audio"
     assert result.voice_id == "nova"
+
+
+# ---------------------------------------------------------------------------
+# Gemini TTS backend tests
+# ---------------------------------------------------------------------------
+
+
+def test_gemini_tts_registered():
+    from openjarvis.speech.gemini_tts import GeminiTTSBackend
+
+    TTSRegistry.register_value("gemini_tts", GeminiTTSBackend)
+    assert TTSRegistry.contains("gemini_tts")
+
+
+def test_gemini_tts_synthesize():
+    from openjarvis.speech.gemini_tts import GeminiTTSBackend
+
+    backend = GeminiTTSBackend(api_key="fake-key")
+
+    with patch(
+        "openjarvis.speech.gemini_tts._gemini_tts_request",
+        return_value=b"fake-gemini-wav",
+    ):
+        result = backend.synthesize("Guten Abend.", voice_id="Orus")
+
+    assert result.audio == b"fake-gemini-wav"
+    assert result.format == "wav"
+    assert result.voice_id == "Orus"

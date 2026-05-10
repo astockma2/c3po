@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import click
@@ -29,6 +31,14 @@ class CheckResult:
 # -- Individual checks -------------------------------------------------------
 
 
+def _config_path() -> Path:
+    """Return the config path the loader will use."""
+    configured = os.environ.get("OPENJARVIS_CONFIG")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return DEFAULT_CONFIG_PATH
+
+
 def _check_python_version() -> CheckResult:
     """Check that Python version is >= 3.10."""
     ver = sys.version_info
@@ -40,22 +50,24 @@ def _check_python_version() -> CheckResult:
 
 def _check_config_exists() -> CheckResult:
     """Check that the config file exists."""
-    if DEFAULT_CONFIG_PATH.exists():
-        return CheckResult("Config file", "ok", str(DEFAULT_CONFIG_PATH))
+    config_path = _config_path()
+    if config_path.exists():
+        return CheckResult("Config file", "ok", str(config_path))
     return CheckResult(
         "Config file",
         "warn",
-        f"Not found at {DEFAULT_CONFIG_PATH}",
+        f"Not found at {config_path}",
         details="Run `jarvis init` to generate a config file.",
     )
 
 
 def _check_config_parses() -> CheckResult:
     """Check that the config file parses successfully."""
-    if not DEFAULT_CONFIG_PATH.exists():
+    config_path = _config_path()
+    if not config_path.exists():
         return CheckResult("Config parsing", "warn", "Skipped (no config file)")
     try:
-        load_config()
+        load_config(config_path)
         return CheckResult("Config parsing", "ok", "Config loaded successfully")
     except Exception as exc:
         return CheckResult("Config parsing", "fail", f"Parse error: {exc}")
@@ -290,9 +302,9 @@ def _check_nodejs() -> CheckResult:
 # -- Main command -------------------------------------------------------------
 
 _STATUS_ICONS = {
-    "ok": "[green]\u2713[/green]",
+    "ok": "[green]OK[/green]",
     "warn": "[yellow]![/yellow]",
-    "fail": "[red]\u2717[/red]",
+    "fail": "[red]X[/red]",
 }
 
 
@@ -360,9 +372,9 @@ def doctor(as_json: bool) -> None:
     bg_failed = False
 
     if bg.rust_extension == "ready":
-        console.print("  [green]✓[/green] Rust extension: ready")
+        console.print("  [green]OK[/green] Rust extension: ready")
     elif bg.rust_extension == "failed":
-        console.print(f"  [red]✗[/red] Rust extension: failed — {bg.rust_error[:80]}")
+        console.print(f"  [red]X[/red] Rust extension: failed - {bg.rust_error[:80]}")
         console.print(
             "    retry: ~/.openjarvis/.scripts/install-rust.sh && "
             "~/.openjarvis/.scripts/build-extension.sh"
@@ -370,20 +382,20 @@ def doctor(as_json: bool) -> None:
         bg_failed = True
     else:
         console.print(
-            "  [yellow]…[/yellow] Rust extension: building (run in background)"
+            "  [yellow]...[/yellow] Rust extension: building (run in background)"
         )
 
     if not bg.models:
         console.print("  [dim]no model downloads tracked[/dim]")
     for model_id, state in bg.models.items():
         if state == "ready":
-            console.print(f"  [green]✓[/green] {model_id}: ready")
+            console.print(f"  [green]OK[/green] {model_id}: ready")
         elif state == "failed":
-            console.print(f"  [red]✗[/red] {model_id}: failed")
+            console.print(f"  [red]X[/red] {model_id}: failed")
             console.print(f"    retry: ~/.openjarvis/.scripts/pull-model.sh {model_id}")
             bg_failed = True
         else:
-            console.print(f"  [yellow]…[/yellow] {model_id}: downloading")
+            console.print(f"  [yellow]...[/yellow] {model_id}: downloading")
 
     if bg_failed:
         raise click.exceptions.Exit(code=1)

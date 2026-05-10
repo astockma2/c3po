@@ -23,6 +23,7 @@ _SECTION_ORDER: List[tuple] = [
         {
             "gmail",
             "gmail_imap",
+            "strato_mail",
             "google_tasks",
             "slack",
             "imessage",
@@ -32,7 +33,7 @@ _SECTION_ORDER: List[tuple] = [
             "github_notifications",
         },
     ),
-    ("CALENDAR", {"gcalendar"}),
+    ("CALENDAR", {"gcalendar", "thunderbird_calendar"}),
     ("WORLD", {"weather", "hackernews", "news_rss"}),
     ("MUSIC", {"spotify", "apple_music"}),
 ]
@@ -177,6 +178,18 @@ def _format_gmail_imap(doc: Document) -> str:
     return f'[gmail] From: {sender} — "{subject}" ({ago})'
 
 
+def _format_strato_mail(doc: Document) -> str:
+    """Format a Strato email document."""
+    sender = doc.author or "Unknown"
+    subject = doc.title or "(kein Betreff)"
+    ago = _time_ago(doc.timestamp)
+    body = doc.content.replace("\n", " ").strip()[:150] if doc.content else ""
+    line = f'[strato_mail] From: {sender} - "{subject}" ({ago})'
+    if body:
+        line += f"\n  Preview: {body}"
+    return line
+
+
 def _format_google_tasks(doc: Document) -> str:
     """Format a Google Tasks document."""
     title = doc.title or "Untitled Task"
@@ -274,6 +287,28 @@ def _format_gcalendar(doc: Document) -> str:
     return f"[gcalendar] {time_str} — {title}{time_range}"
 
 
+def _format_thunderbird_calendar(doc: Document) -> str:
+    """Format a Thunderbird calendar event document."""
+    title = doc.title or "(ohne Titel)"
+    start = doc.timestamp
+    end_raw = doc.metadata.get("end", "")
+    all_day = bool(doc.metadata.get("all_day", False))
+    cal_name = doc.metadata.get("calendar_name", "")
+
+    if all_day:
+        time_str = start.strftime("%a %d.%m.")
+    else:
+        time_str = start.strftime("%a %d.%m. %H:%M")
+        try:
+            end = datetime.fromisoformat(end_raw)
+            time_str += f"-{end.strftime('%H:%M')}"
+        except (TypeError, ValueError):
+            pass
+
+    suffix = f" [{cal_name}]" if cal_name else ""
+    return f"[thunderbird_calendar] {time_str}: {title}{suffix}"
+
+
 def _format_spotify(doc: Document) -> str:
     """Format a Spotify recently-played track — returns 'Track — Artist'."""
     # doc.title is already "Track — Artist" from the connector
@@ -335,6 +370,7 @@ _FORMATTERS: Dict[str, Any] = {
     "strava": _format_strava,
     "gmail": _format_gmail,
     "gmail_imap": _format_gmail_imap,
+    "strato_mail": _format_strato_mail,
     "google_tasks": _format_google_tasks,
     "slack": _format_slack,
     "imessage": _format_imessage,
@@ -342,6 +378,7 @@ _FORMATTERS: Dict[str, Any] = {
     "outlook": _format_outlook,
     "notion": _format_notion,
     "gcalendar": _format_gcalendar,
+    "thunderbird_calendar": _format_thunderbird_calendar,
     "weather": _format_weather,
     "github_notifications": _format_github_notifications,
     "hackernews": _format_hackernews,
