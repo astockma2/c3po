@@ -12,4 +12,7 @@
 # Tools, die hier NICHT stehen, werden default-deny abgelehnt.
 
 [tools]
-# Initial leer. Stage-3-Tools (Mail/Calendar/Browser/Admin) tragen sich hier ein.
+# Stage 3 Sub-Stufe 3.1 — Time + Hello (alle free)
+"time.now" = "free"
+"time.date" = "free"
+"hello.greet" = "free"
