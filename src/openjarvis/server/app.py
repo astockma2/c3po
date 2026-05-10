@@ -346,6 +346,18 @@ def create_app(
         except Exception as exc:
             logger.debug("Webhook routes init skipped: %s", exc)
 
+    # Stage 5: Cockpit-Lite — eigenes Static-Verzeichnis, in git eingecheckt
+    # (im Gegensatz zu server/static/ welches Build-Output ist und gitignored).
+    # Mount VOR dem SPA-Catch-All, damit /cockpit/* nicht durch die Chat-UI
+    # geschluckt wird.
+    cockpit_dir = pathlib.Path(__file__).parent / "cockpit_static"
+    if cockpit_dir.is_dir():
+        app.mount(
+            "/cockpit",
+            _NoCacheStaticFiles(directory=cockpit_dir, html=True),
+            name="cockpit",
+        )
+
     # Serve static frontend assets if the static/ directory exists
     static_dir = pathlib.Path(__file__).parent / "static"
     if static_dir.is_dir():
