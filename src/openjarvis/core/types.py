@@ -56,6 +56,7 @@ class ToolCall:
     id: str
     name: str
     arguments: str  # JSON string
+    channel: str = ""  # Stage 3: Kanal-Kontext fuer PermissionGate (Default leer)
 
 
 @dataclass(slots=True)

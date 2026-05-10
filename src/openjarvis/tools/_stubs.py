@@ -107,6 +107,8 @@ class ToolExecutor:
         capability_policy: Optional[Any] = None,
         agent_id: str = "",
         boundary_guard: Optional[Any] = None,
+        permission_gate: Optional[Any] = None,
+        permission_loop: Optional[Any] = None,
     ) -> None:
         self._tools: Dict[str, BaseTool] = {t.spec.name: t for t in tools}
         self._bus = bus
@@ -116,6 +118,16 @@ class ToolExecutor:
         self._capability_policy = capability_policy
         self._agent_id = agent_id
         self._boundary_guard = boundary_guard
+        self._permission_gate = permission_gate
+        self._permission_loop = permission_loop
+        self._permission_adapter: Optional[Any] = None
+        if permission_gate is not None:
+            from openjarvis.tools.permission_adapter import PermissionGateAdapter
+
+            self._permission_adapter = PermissionGateAdapter(
+                permission_gate,
+                loop=permission_loop,
+            )
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """Parse arguments, dispatch to tool, measure latency, emit events."""
@@ -204,6 +216,27 @@ class ToolExecutor:
             # Remove internal taint key before passing to tool
             if isinstance(params, dict):
                 params.pop("_taint", None)
+
+        # PermissionGate hook (Stage 3, see docs/architecture/tools_c3po.md)
+        if self._permission_adapter is not None:
+            channel = tool_call.channel or "unknown"
+            perm_args = params if isinstance(params, dict) else {}
+            try:
+                perm_result = self._permission_adapter.check_sync(
+                    tool_call.name, perm_args, channel=channel
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                return ToolResult(
+                    tool_name=tool_call.name,
+                    content=f"Permission check error: {exc}",
+                    success=False,
+                )
+            if not perm_result.is_granted:
+                return ToolResult(
+                    tool_name=tool_call.name,
+                    content=f"Permission denied: {perm_result.reason}",
+                    success=False,
+                )
 
         # Confirmation check for sensitive tools
         if tool.spec.requires_confirmation:
