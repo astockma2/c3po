@@ -43,12 +43,25 @@ class WakeWordDetector:
         self._model = _load_model(model_path)
         self._wake_name = wake_name
         self._threshold = threshold
+        self._expected_chunk_bytes = 1280 * 2  # 1280 samples × int16
+        self._size_warned = False
 
     def process(self, audio_chunk: bytes) -> Tuple[bool, float]:
         """Gibt (is_wake, confidence) fuer einen 16kHz int16 chunk zurueck.
 
         openWakeWord erwartet typischerweise 1280-sample chunks (80ms @ 16kHz).
         """
+        if len(audio_chunk) == 0:
+            return (False, 0.0)
+        if len(audio_chunk) != self._expected_chunk_bytes and not self._size_warned:
+            logger.warning(
+                "WakeWordDetector: chunk has %d bytes (expected %d). "
+                "openWakeWord internal buffers may produce garbage. "
+                "Verify your mic loop yields 1280-sample chunks at 16kHz.",
+                len(audio_chunk),
+                self._expected_chunk_bytes,
+            )
+            self._size_warned = True
         audio_np = np.frombuffer(audio_chunk, dtype=np.int16)
         result = self._model.predict(audio_np)
         confidence = float(result.get(self._wake_name, 0.0))
