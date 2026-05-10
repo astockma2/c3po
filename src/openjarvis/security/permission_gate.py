@@ -12,10 +12,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import tomllib
+import uuid
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
-from openjarvis.core.events import EventBus
+from openjarvis.core.events import EventBus, EventType
 from openjarvis.security.types import PermissionLevel, PermissionResult
 
 logger = logging.getLogger(__name__)
@@ -89,13 +90,65 @@ class PermissionGate:
                 f"tool '{tool_name}' explicitly denied"
             )
 
-        if level in (PermissionLevel.CONFIRM, PermissionLevel.ADMIN):
-            raise NotImplementedError(
-                "Confirm/Admin-Pfade kommen in Task 5+6"
+        if level == PermissionLevel.CONFIRM:
+            return await self._start_pending(
+                tool_name=tool_name,
+                args=args,
+                channel=channel,
+                event_type=EventType.PERMISSION_CONFIRM_REQUESTED,
+                result_factory=PermissionResult.needs_confirm,
             )
+
+        if level == PermissionLevel.ADMIN:
+            raise NotImplementedError("Admin-Pfad kommt in Task 6")
 
         # Unreachable - alle Enum-Werte oben behandelt
         return PermissionResult.denied(f"unbekanntes Level: {level}")
+
+    async def _start_pending(
+        self,
+        *,
+        tool_name: str,
+        args: dict,
+        channel: str,
+        event_type: EventType,
+        result_factory,
+    ) -> PermissionResult:
+        """Erzeugt UUID, registriert Future, publiziert Event."""
+        prompt_id = str(uuid.uuid4())
+        loop = asyncio.get_running_loop()
+        async with self._lock:
+            self._pending[prompt_id] = loop.create_future()
+        if self._bus is not None:
+            self._bus.publish(
+                event_type,
+                {
+                    "prompt_id": prompt_id,
+                    "tool": tool_name,
+                    "args": args,
+                    "channel": channel,
+                },
+            )
+        return result_factory(prompt_id)
+
+    async def confirm(self, prompt_id: str, response: str) -> bool:
+        """Vom Tray/Channel gerufen mit der User-Antwort.
+
+        Confirm-Pfad: response in {"yes","ja","ok","true","1"} -> True, sonst False.
+        Admin-Pfad (Task 6): response ist die PIN.
+        """
+        async with self._lock:
+            fut = self._pending.pop(prompt_id, None)
+        if fut is None or fut.done():
+            return False
+        granted = response.strip().lower() in ("yes", "ja", "ok", "true", "1")
+        fut.set_result(granted)
+        if self._bus is not None:
+            self._bus.publish(
+                EventType.PERMISSION_RESOLVED,
+                {"prompt_id": prompt_id, "granted": granted},
+            )
+        return granted
 
 
 __all__ = ["PermissionGate"]
