@@ -54,6 +54,11 @@ class InferenceEngine(ABC):
 
     engine_id: str
     is_cloud: bool = False
+    # C3PO Stage 7: Markierung fuer Engines die NICHT durch den Stanford-Cloud-
+    # Routing-Pfad (stream_cloud/stream_local) muessen. Beispiel: ClaudiProxyEngine
+    # (OAuth via VPS, kein API-Key, kann selbst streamen). server/routes.py
+    # prueft das via _is_c3po_custom_engine() statt einer Tool-spezifischen Funktion.
+    is_c3po_custom: bool = False
 
     @abstractmethod
     def generate(

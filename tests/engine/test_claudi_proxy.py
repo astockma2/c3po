@@ -170,3 +170,21 @@ class TestClaudiProxyEngineStream:
             finally:
                 eng.close()
         assert chunks == ["Hallo."]
+
+
+class TestClaudiProxyEngineC3poCustomFlag:
+    """Stage 7: Engine ist als C3PO-Custom markiert (umgeht Stanford-Cloud-Routing)."""
+
+    def test_is_c3po_custom_true(self):
+        eng = ClaudiProxyEngine()
+        try:
+            assert eng.is_c3po_custom is True
+        finally:
+            eng.close()
+
+    def test_base_class_default_is_false(self):
+        """Stanford-Engines wie OllamaEngine duerfen nicht versehentlich
+        als c3po-custom markiert werden — Default auf der ABC ist False."""
+        from openjarvis.engine._stubs import InferenceEngine
+
+        assert InferenceEngine.is_c3po_custom is False

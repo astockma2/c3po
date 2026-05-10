@@ -40,6 +40,9 @@ class ClaudiProxyEngine(InferenceEngine):
 
     engine_id = "claudi_proxy"
     is_cloud = True
+    # Stage 7: bypass das Stanford-Cloud-Routing (stream_cloud/stream_local),
+    # der Proxy hat OAuth statt API-Key und kann selbst streamen.
+    is_c3po_custom = True
 
     def __init__(
         self,
