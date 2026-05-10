@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openjarvis.channels._stubs import ChannelStatus
+from openjarvis.channels._stubs import ChannelMessage, ChannelStatus
 from openjarvis.channels.voice_local import VoiceLocalChannel
 from openjarvis.core.registry import ChannelRegistry
 
@@ -174,3 +174,124 @@ def test_connect_without_wakeword_model_sets_error():
     ch = VoiceLocalChannel()
     ch.connect()
     assert ch.status() == ChannelStatus.ERROR
+
+
+@pytest.mark.asyncio
+async def test_listen_once_calls_handler_on_wake():
+    """Wenn WakeWord triggert, soll record_until_silence + STT laufen, dann handler."""
+    fake_handler = MagicMock(return_value="Antwort an User")
+
+    fake_detector = MagicMock()
+    fake_detector.process.side_effect = [
+        (False, 0.1),
+        (False, 0.2),
+        (True, 0.8),
+        (False, 0.0),
+    ]
+
+    fake_stt = MagicMock()
+    fake_stt.transcribe.return_value = MagicMock(
+        text="hallo jarvis",
+        language="de",
+    )
+
+    chunks_iter = iter([b"\x00\x00" * 1280] * 4)
+
+    with patch(
+        "openjarvis.channels.voice_local.WakeWordDetector",
+        return_value=fake_detector,
+    ), patch(
+        "openjarvis.channels.voice_local._mic_chunk_iter",
+        return_value=chunks_iter,
+    ), patch(
+        "openjarvis.channels.voice_local.record_until_silence",
+        return_value=b"\x00\x00" * 16000,
+    ), patch(
+        "openjarvis.channels.voice_local._get_stt_backend",
+        return_value=fake_stt,
+    ), patch(
+        "openjarvis.channels.voice_local._get_tts_backend"
+    ) as mock_tts, patch(
+        "openjarvis.channels.voice_local._play_audio"
+    ):
+        mock_tts.return_value.synthesize.return_value = MagicMock(
+            audio=b"x", sample_rate=22050
+        )
+        ch = VoiceLocalChannel(
+            wakeword_model="dummy.onnx",
+            wake_name="hey_jarvis_v0.1",
+            tts_model_dir="piper-models",
+        )
+        ch.on_message(fake_handler)
+        await ch._listen_once()
+
+    fake_handler.assert_called_once()
+    msg = fake_handler.call_args[0][0]
+    assert isinstance(msg, ChannelMessage)
+    assert msg.content == "hallo jarvis"
+    assert msg.channel == "voice_local"
+    assert msg.metadata.get("language") == "de"
+    fake_stt.transcribe.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_listen_once_without_wake_returns_silently():
+    """Wenn kein Wake-Word triggert (Generator erschoepft), kein Handler-Call."""
+    fake_handler = MagicMock()
+    fake_detector = MagicMock()
+    fake_detector.process.return_value = (False, 0.1)
+
+    chunks_iter = iter([b"\x00\x00" * 1280] * 3)
+
+    with patch(
+        "openjarvis.channels.voice_local.WakeWordDetector",
+        return_value=fake_detector,
+    ), patch(
+        "openjarvis.channels.voice_local._mic_chunk_iter",
+        return_value=chunks_iter,
+    ):
+        ch = VoiceLocalChannel(
+            wakeword_model="dummy.onnx",
+            wake_name="hey_jarvis_v0.1",
+            tts_model_dir="piper-models",
+        )
+        ch.on_message(fake_handler)
+        await ch._listen_once()
+
+    fake_handler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_listen_once_skips_send_when_handler_returns_none():
+    """Handler kann None zurueckgeben - dann KEIN TTS-Output."""
+    fake_handler = MagicMock(return_value=None)
+    fake_detector = MagicMock()
+    fake_detector.process.side_effect = [(True, 0.9)]
+    fake_stt = MagicMock()
+    fake_stt.transcribe.return_value = MagicMock(text="ok", language="de")
+
+    with patch(
+        "openjarvis.channels.voice_local.WakeWordDetector",
+        return_value=fake_detector,
+    ), patch(
+        "openjarvis.channels.voice_local._mic_chunk_iter",
+        return_value=iter([b"\x00\x00" * 1280]),
+    ), patch(
+        "openjarvis.channels.voice_local.record_until_silence",
+        return_value=b"\x00\x00" * 16000,
+    ), patch(
+        "openjarvis.channels.voice_local._get_stt_backend",
+        return_value=fake_stt,
+    ), patch(
+        "openjarvis.channels.voice_local._play_audio"
+    ) as mock_play:
+        ch = VoiceLocalChannel(
+            wakeword_model="dummy.onnx",
+            wake_name="hey_jarvis_v0.1",
+            tts_model_dir="piper-models",
+        )
+        ch.on_message(fake_handler)
+        await ch._listen_once()
+
+    fake_handler.assert_called_once()
+    mock_play.assert_not_called()
