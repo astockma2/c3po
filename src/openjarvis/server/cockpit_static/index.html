@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>C3PO Cockpit-Lite</title>
+    <link rel="stylesheet" href="cockpit.css">
+</head>
+<body>
+    <header>
+        <h1>C3PO Cockpit</h1>
+        <span id="conn-indicator" class="indicator" title="Server-Verbindung">&#9679;</span>
+        <span id="conn-text">verbunden</span>
+    </header>
+
+    <main>
+        <section id="pending-section">
+            <h2>Offene Permission-Anfragen</h2>
+            <div id="pending-list">
+                <p class="empty">Keine offenen Anfragen.</p>
+            </div>
+        </section>
+
+        <section id="voice-section">
+            <h2>Voice-Status</h2>
+            <dl id="voice-status">
+                <dt>Verbindung:</dt><dd id="voice-connected">&mdash;</dd>
+                <dt>Wake-Words:</dt><dd id="voice-wake-count">0</dd>
+                <dt>Letzter Wake:</dt><dd id="voice-last-wake">&mdash;</dd>
+            </dl>
+        </section>
+
+        <section id="audit-section">
+            <h2>Audit-Log <small>(letzte 50)</small></h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Zeit</th>
+                        <th>Event</th>
+                        <th>Aktion</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-rows"></tbody>
+            </table>
+        </section>
+    </main>
+
+    <script src="cockpit.js"></script>
+</body>
+</html>

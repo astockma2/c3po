@@ -89,3 +89,62 @@ def test_voice_status_snapshot_function_returns_dict():
     snap = get_voice_status_snapshot()
     assert isinstance(snap, dict)
     assert set(snap.keys()) >= {"connected", "wake_count", "last_wake"}
+
+
+class TestPendingEndpoint:
+    """Stage 5: GET /permission/pending liefert offene Prompts ans Cockpit."""
+
+    def test_pending_empty(self, tmp_path):
+        app, _, _ = _build_app(tmp_path)
+        client = TestClient(app)
+        resp = client.get("/permission/pending")
+        assert resp.status_code == 200
+        assert resp.json() == {"pending": []}
+
+    def test_pending_returns_entries(self, tmp_path):
+        app, gate, _ = _build_app(tmp_path)
+        # Pending-Eintrag manuell simulieren — asyncio.Future braucht einen Loop.
+        loop = asyncio.new_event_loop()
+        try:
+            fut = loop.create_future()
+            gate._pending["pid-123"] = (fut, "confirm")
+            gate._pending_meta["pid-123"] = {
+                "tool": "mail.send",
+                "args": {"to": "x"},
+                "channel": "voice_local",
+            }
+            client = TestClient(app)
+            resp = client.get("/permission/pending")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert len(data["pending"]) == 1
+            entry = data["pending"][0]
+            assert entry["prompt_id"] == "pid-123"
+            assert entry["tool"] == "mail.send"
+            assert entry["channel"] == "voice_local"
+            assert entry["kind"] == "confirm"
+            assert entry["args"] == {"to": "x"}
+        finally:
+            if not fut.done():
+                fut.cancel()
+            loop.close()
+
+    def test_pending_admin_kind(self, tmp_path):
+        app, gate, _ = _build_app(tmp_path)
+        loop = asyncio.new_event_loop()
+        try:
+            fut = loop.create_future()
+            gate._pending["pid-pin"] = (fut, "pin")
+            gate._pending_meta["pid-pin"] = {
+                "tool": "admin.flush_dns",
+                "args": {},
+                "channel": "voice_local",
+            }
+            client = TestClient(app)
+            resp = client.get("/permission/pending")
+            data = resp.json()
+            assert data["pending"][0]["kind"] == "pin"
+        finally:
+            if not fut.done():
+                fut.cancel()
+            loop.close()

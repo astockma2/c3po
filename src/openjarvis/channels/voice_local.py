@@ -28,6 +28,22 @@ from openjarvis.speech._audio import record_until_silence
 from openjarvis.speech.text_normalizer import normalize_for_tts
 from openjarvis.speech.wakeword import WakeWordDetector
 
+# Stage 5: Voice-Status fuer's Cockpit-Lite. Wenn permission_routes nicht
+# verfuegbar ist (z.B. in einem Test-Setup ohne Server), fallen wir auf
+# einen No-op-Stub zurueck — der Channel funktioniert weiter, das Cockpit
+# zeigt nur statische "getrennt"-Werte.
+try:
+    from openjarvis.server.permission_routes import (
+        get_voice_status_snapshot,
+        update_voice_status,
+    )
+except ImportError:  # pragma: no cover - defensive
+    def update_voice_status(**kwargs):  # type: ignore[no-redef]
+        pass
+
+    def get_voice_status_snapshot():  # type: ignore[no-redef]
+        return {"connected": False, "wake_count": 0, "last_wake": 0.0}
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,12 +197,14 @@ class VoiceLocalChannel(BaseChannel):
             self._status = ChannelStatus.ERROR
             return
         self._status = ChannelStatus.CONNECTED
+        update_voice_status(connected=True)
         logger.info("voice_local connected (mic-loop noch nicht aktiv)")
 
     def disconnect(self) -> None:
         if self._listen_task and not self._listen_task.done():
             self._listen_task.cancel()
         self._status = ChannelStatus.DISCONNECTED
+        update_voice_status(connected=False)
 
     def send(
         self,
@@ -233,6 +251,14 @@ class VoiceLocalChannel(BaseChannel):
             is_wake, _conf = detector.process(chunk)
             if not is_wake:
                 continue
+
+            # Stage 5: Wake-Event ins Cockpit-Voice-Status hochzaehlen.
+            import time as _time
+            _snap = get_voice_status_snapshot()
+            update_voice_status(
+                wake_count=(_snap.get("wake_count", 0) or 0) + 1,
+                last_wake=_time.time(),
+            )
 
             pcm = record_until_silence(
                 sample_rate=16000,
