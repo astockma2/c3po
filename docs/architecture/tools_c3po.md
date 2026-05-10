@@ -85,6 +85,21 @@ gesetzt haben.
 Engine-Loop, Telegram-Channel) setzen es. Wenn leer und Permission-Gate gesetzt, wird
 `channel="unknown"` an `gate.check()` weitergegeben — landet im Audit-Log.
 
+### Deadlock-Falle beim Verdrahten in Stage 4
+
+Wenn `ToolExecutor(permission_gate=…, permission_loop=L)` mit einem laufenden Loop
+`L` konfiguriert ist und `executor.execute()` synchron **aus genau diesem Loop**
+gerufen wird, deadlockt der Adapter: `run_coroutine_threadsafe(gate.check, L).result()`
+blockiert den Loop, der gerade auf das Future warten müsste.
+
+**Regel fuer Stage 4 (Voice-Channel-Tool-Loop):**
+- Entweder `permission_loop=None` setzen (Adapter macht `asyncio.run()` mit
+  frischem Loop pro Aufruf — okay weil Permission-Checks selten sind).
+- Oder `executor.execute()` aus dem Loop via
+  `await loop.run_in_executor(None, executor.execute, tool_call)` callen.
+
+Demo: `scripts/tools_smoke_test.py` zeigt beide Pfade.
+
 ## Permission-Matrix (Stage 3 final)
 
 | Block | Tools | free | confirm | admin |
