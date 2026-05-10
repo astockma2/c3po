@@ -11,6 +11,11 @@ from openjarvis.core.events import EventBus
 from tests.agents.fake_engine import FakeEngine
 from tests.agents.scenario_harness import FakeSystem, ScenarioHarness
 
+# Re-export der reload_c3po_tools-Fixture, damit Voice-Brain-Tests (und
+# spaeter weitere Agent-Tests) die Stage-3-Tools nach dem Registry-Wipe
+# durch tests/conftest.py wieder befuellen koennen.
+from tests.tools.c3po.test_auto_import import reload_c3po_tools  # noqa: F401
+
 
 @pytest.fixture
 def scenario_harness(tmp_path):
