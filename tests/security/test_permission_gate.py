@@ -16,6 +16,14 @@ def _write_toml(tmp_path: Path, tools: dict[str, str]) -> Path:
     return p
 
 
+def _write_admin_whitelist(tmp_path: Path, tools: list[str]) -> Path:
+    """Schreibt admin_whitelist.toml mit [admin] tools = [...]"""
+    p = tmp_path / "admin_whitelist.toml"
+    quoted = ", ".join(f'"{t}"' for t in tools)
+    p.write_text(f"[admin]\ntools = [{quoted}]\n", encoding="utf-8")
+    return p
+
+
 @pytest.mark.asyncio
 async def test_check_free_returns_granted(tmp_path):
     from openjarvis.security.permission_gate import PermissionGate
@@ -149,6 +157,98 @@ async def test_confirm_unknown_prompt_id_returns_false(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_admin_tool_not_in_whitelist_denied(tmp_path):
+    """ADMIN-Tool, das NICHT in admin_whitelist.toml steht -> sofort denied."""
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"admin.reboot": "admin"})
+    whitelist = _write_admin_whitelist(tmp_path, ["admin.shutdown"])  # nicht reboot!
+    gate = PermissionGate(
+        config_path=config,
+        admin_whitelist_path=whitelist,
+        pin_check=lambda pin: True,
+    )
+    result = await gate.check("admin.reboot", {}, channel="voice_local")
+    assert not result.is_granted
+    assert "whitelist" in result.reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_admin_tool_in_whitelist_returns_needs_pin(tmp_path):
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"admin.reboot": "admin"})
+    whitelist = _write_admin_whitelist(tmp_path, ["admin.reboot"])
+    gate = PermissionGate(
+        config_path=config,
+        admin_whitelist_path=whitelist,
+        pin_check=lambda pin: True,
+    )
+    result = await gate.check("admin.reboot", {}, channel="voice_local")
+    assert result.state == "needs_pin"
+    assert len(result.prompt_id) == 36
+    assert result.prompt_id in gate._pending
+
+
+@pytest.mark.asyncio
+async def test_admin_correct_pin_grants(tmp_path):
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"admin.reboot": "admin"})
+    whitelist = _write_admin_whitelist(tmp_path, ["admin.reboot"])
+    gate = PermissionGate(
+        config_path=config,
+        admin_whitelist_path=whitelist,
+        pin_check=lambda pin: pin == "1234",
+    )
+    result = await gate.check("admin.reboot", {}, channel="voice_local")
+    granted = await gate.confirm(result.prompt_id, "1234")
+    assert granted is True
+
+
+@pytest.mark.asyncio
+async def test_admin_wrong_pin_denies(tmp_path):
+    from openjarvis.security.permission_gate import PermissionGate
+
+    config = _write_toml(tmp_path, {"admin.reboot": "admin"})
+    whitelist = _write_admin_whitelist(tmp_path, ["admin.reboot"])
+    gate = PermissionGate(
+        config_path=config,
+        admin_whitelist_path=whitelist,
+        pin_check=lambda pin: pin == "1234",
+    )
+    result = await gate.check("admin.reboot", {}, channel="voice_local")
+    granted = await gate.confirm(result.prompt_id, "9999")
+    assert granted is False
+
+
+@pytest.mark.asyncio
+async def test_admin_publishes_pin_event(tmp_path):
+    """ADMIN: PERMISSION_PIN_REQUESTED (NICHT _CONFIRM_) wird publiziert."""
+    from openjarvis.core.events import EventBus, EventType
+    from openjarvis.security.permission_gate import PermissionGate
+
+    bus = EventBus()
+    pin_seen = []
+    confirm_seen = []
+    bus.subscribe(EventType.PERMISSION_PIN_REQUESTED, lambda e: pin_seen.append(e))
+    bus.subscribe(EventType.PERMISSION_CONFIRM_REQUESTED, lambda e: confirm_seen.append(e))
+
+    config = _write_toml(tmp_path, {"admin.reboot": "admin"})
+    whitelist = _write_admin_whitelist(tmp_path, ["admin.reboot"])
+    gate = PermissionGate(
+        config_path=config,
+        admin_whitelist_path=whitelist,
+        pin_check=lambda pin: True,
+        bus=bus,
+    )
+    await gate.check("admin.reboot", {}, channel="voice_local")
+
+    assert len(pin_seen) == 1
+    assert len(confirm_seen) == 0
+
+
+@pytest.mark.asyncio
 async def test_concurrent_check_then_confirm_flow(tmp_path):
     """Producer/Consumer-Flow: check() in Task A, confirm() in Task B,
     Task A liest das Future."""
@@ -165,7 +265,7 @@ async def test_concurrent_check_then_confirm_flow(tmp_path):
         await asyncio.sleep(0.02)
         await gate.confirm(pid, "yes")
 
-    fut = gate._pending[pid]
+    fut, _kind = gate._pending[pid]
     asyncio.create_task(respond_after_delay())
     granted = await fut
     assert granted is True
