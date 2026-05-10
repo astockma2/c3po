@@ -56,6 +56,15 @@ def _is_codex_cli_model(engine, model: str) -> bool:
     return getattr(routed, "engine_id", "") == "codex_cli"
 
 
+def _is_claudi_proxy_model(engine, model: str) -> bool:
+    """C3PO Stage 5: Claudi-Proxy-Modelle sind technisch 'cloud' (Anthropic),
+    aber laufen via Andre's VPS-OAuth ohne API-Key. Damit das Frontend sie
+    im normalen Modell-Dropdown anbietet (statt sie in den 'Cloud Models'-Tab
+    zu verbannen), bekommen sie hier denselben Bypass wie Codex-CLI."""
+    routed = _engine_for_model(engine, model)
+    return getattr(routed, "engine_id", "") == "claudi_proxy"
+
+
 def _to_messages(chat_messages) -> list[Message]:
     """Convert Pydantic ChatMessage objects to core Message objects."""
     messages = []
@@ -346,7 +355,11 @@ async def _handle_stream(
     # Route directly to the right backend — bypasses engine routing entirely
     # so broken MultiEngine state can never misdirect requests.
     use_codex_cli = _is_codex_cli_model(engine, model)
-    use_cloud = is_cloud_model(model) and not use_codex_cli
+    use_claudi_proxy = _is_claudi_proxy_model(engine, model)
+    # C3PO Stage 5: Claudi-Proxy ist Andre's OAuth-Variante fuer Cloud-Modelle.
+    # Sie laeuft technisch ueber den engine-Pfad (stream_local), NICHT ueber
+    # stream_cloud (das wuerde einen ANTHROPIC_API_KEY erwarten).
+    use_cloud = is_cloud_model(model) and not use_codex_cli and not use_claudi_proxy
 
     async def generate():
         # Send role chunk first
@@ -379,7 +392,10 @@ async def _handle_stream(
                 # cloud backend — detected via isinstance so mocks are not
                 # accidentally matched.
                 _use_local_fallback = False
-                if not use_codex_cli:
+                # C3PO Stage 5: claudi_proxy hat is_cloud=True aber soll NICHT
+                # auf stream_local() (= Ollama) zurueckfallen. Die Engine kann
+                # selbst streamen — wir lassen engine.stream() laufen.
+                if not use_codex_cli and not use_claudi_proxy:
                     try:
                         from openjarvis.engine.multi import MultiEngine
 
@@ -492,7 +508,11 @@ async def list_models(request: Request) -> ModelListResponse:
     engine = request.app.state.engine
     all_ids = engine.list_models()
     model_ids = [
-        m for m in all_ids if not is_cloud_model(m) or _is_codex_cli_model(engine, m)
+        m
+        for m in all_ids
+        if not is_cloud_model(m)
+        or _is_codex_cli_model(engine, m)
+        or _is_claudi_proxy_model(engine, m)
     ]
     if not model_ids:
         model_ids = await list_local_models()
